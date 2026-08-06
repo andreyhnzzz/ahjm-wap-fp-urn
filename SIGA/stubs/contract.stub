@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Domain\Contracts;
+
+use Src\{{Context}}\{{Entity}}\Domain\Entities\{{Entity}};
+
+/**
+ * Port (in the Hexagonal sense) that Infrastructure adapters must
+ * implement. The Domain and Application layers depend only on this
+ * abstraction — never on Eloquent, the database, or any concrete driver.
+ */
+interface {{Entity}}RepositoryInterface
+{
+    public function find(int $id): ?{{Entity}};
+
+    public function save({{Entity}} ${{entity_lower}}): {{Entity}};
+
+    public function delete(int $id): void;
+}

@@ -1,0 +1,35 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Presentation\Policies;
+
+use App\Models\User;
+use Src\{{Context}}\{{Entity}}\Domain\Entities\{{Entity}};
+
+/**
+ * Authorization rules for {{Entity}}. Registered automatically via
+ * Gate::policy() in App\Providers\DomainServiceProvider::$domainPolicies.
+ */
+class {{Entity}}Policy
+{
+    public function view(User $user, {{Entity}} ${{entity_lower}}): bool
+    {
+        return true;
+    }
+
+    public function create(User $user): bool
+    {
+        return true;
+    }
+
+    public function update(User $user, {{Entity}} ${{entity_lower}}): bool
+    {
+        return true;
+    }
+
+    public function delete(User $user, {{Entity}} ${{entity_lower}}): bool
+    {
+        return true;
+    }
+}

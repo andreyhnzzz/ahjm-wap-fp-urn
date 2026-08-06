@@ -1,0 +1,30 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Presentation\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Src\{{Context}}\{{Entity}}\Application\DTOs\{{Entity}}DTO;
+use Src\{{Context}}\{{Entity}}\Application\UseCases\Create{{Entity}}UseCase;
+use Src\{{Context}}\{{Entity}}\Presentation\Requests\{{Entity}}Request;
+
+/**
+ * Primary adapter: translates HTTP in, delegates to the Application
+ * layer, translates the result back out. No business logic lives here.
+ */
+class {{Entity}}Controller extends Controller
+{
+    public function store({{Entity}}Request $request, Create{{Entity}}UseCase $useCase): JsonResponse
+    {
+        $dto = {{Entity}}DTO::fromArray($request->validated());
+
+        ${{entity_lower}} = $useCase->handle($dto);
+
+        return response()->json([
+            'id' => ${{entity_lower}}->id(),
+            'name' => ${{entity_lower}}->name(),
+        ], 201);
+    }
+}

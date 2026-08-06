@@ -1,0 +1,51 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Infrastructure\Persistence\Repositories;
+
+use App\Models\{{Entity}} as {{Entity}}Model;
+use Src\{{Context}}\{{Entity}}\Domain\Contracts\{{Entity}}RepositoryInterface;
+use Src\{{Context}}\{{Entity}}\Domain\Entities\{{Entity}};
+
+/**
+ * Concrete Eloquent adapter for the {{Entity}}RepositoryInterface port.
+ *
+ * This is the only class in the module allowed to know about Eloquent.
+ * It translates between {{Entity}}Model (persistence shape) and {{Entity}}
+ * (Domain shape) — a small anti-corruption layer.
+ *
+ * If App\Models\{{Entity}} does not exist yet, generate it separately with
+ * `php artisan make:model {{Entity}} -m`.
+ */
+final class Eloquent{{Entity}}Repository implements {{Entity}}RepositoryInterface
+{
+    public function find(int $id): ?{{Entity}}
+    {
+        $model = {{Entity}}Model::query()->find($id);
+
+        return $model ? $this->toDomain($model) : null;
+    }
+
+    public function save({{Entity}} ${{entity_lower}}): {{Entity}}
+    {
+        $model = ${{entity_lower}}->id()
+            ? {{Entity}}Model::query()->findOrFail(${{entity_lower}}->id())
+            : new {{Entity}}Model();
+
+        $model->name = ${{entity_lower}}->name();
+        $model->save();
+
+        return {{Entity}}::reconstitute($model->id, $model->name);
+    }
+
+    public function delete(int $id): void
+    {
+        {{Entity}}Model::query()->whereKey($id)->delete();
+    }
+
+    private function toDomain({{Entity}}Model $model): {{Entity}}
+    {
+        return {{Entity}}::reconstitute($model->id, $model->name);
+    }
+}

@@ -1,0 +1,36 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Presentation\Livewire;
+
+use Livewire\Component;
+use Src\{{Context}}\{{Entity}}\Application\DTOs\{{Entity}}DTO;
+use Src\{{Context}}\{{Entity}}\Application\UseCases\Create{{Entity}}UseCase;
+
+/**
+ * Primary adapter (Livewire flavor). Same contract as the Controller:
+ * translate input, delegate to the Application layer, expose state.
+ * No business rules belong in this class.
+ */
+class {{Entity}}Component extends Component
+{
+    public string $name = '';
+
+    public function save(Create{{Entity}}UseCase $useCase): void
+    {
+        $this->validate([
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $useCase->handle(new {{Entity}}DTO(name: $this->name));
+
+        $this->reset('name');
+        $this->dispatch('{{entity_lower}}-created');
+    }
+
+    public function render()
+    {
+        return view('{{context_lower}}.{{entity_lower}}.livewire.{{entity_lower}}-component');
+    }
+}

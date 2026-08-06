@@ -1,0 +1,55 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Domain\Entities;
+
+/**
+ * {{Entity}} — Aggregate Root of the {{Context}} bounded context.
+ *
+ * Pure PHP. Zero framework coupling — no Eloquent, no Illuminate imports.
+ * This class is the single source of truth for {{Entity}} business
+ * invariants. Persistence concerns belong to Infrastructure, not here.
+ */
+final class {{Entity}}
+{
+    private function __construct(
+        private readonly ?int $id,
+        private string $name,
+    ) {
+    }
+
+    /**
+     * Factory for a brand-new {{Entity}} (no identity yet).
+     */
+    public static function create(string $name): self
+    {
+        return new self(id: null, name: $name);
+    }
+
+    /**
+     * Factory used exclusively by the Infrastructure layer to rehydrate
+     * a {{Entity}} from a persisted record.
+     */
+    public static function reconstitute(int $id, string $name): self
+    {
+        return new self(id: $id, name: $name);
+    }
+
+    public function rename(string $name): void
+    {
+        // Add invariants here (length, format, uniqueness delegated to a
+        // domain service, etc.) before mutating state.
+        $this->name = $name;
+    }
+
+    public function id(): ?int
+    {
+        return $this->id;
+    }
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+}

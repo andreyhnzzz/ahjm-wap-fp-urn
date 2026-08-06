@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Domain\Events;
+
+/**
+ * Pure PHP domain event — zero framework coupling. Dispatch it through
+ * Laravel's event bus from the Application layer, e.g. inside the use
+ * case after a successful save:
+ *
+ *   event(new {{Entity}}CreatedEvent($id, $name));
+ */
+final class {{Entity}}CreatedEvent
+{
+    public function __construct(
+        public readonly int $id,
+        public readonly string $name,
+    ) {
+    }
+}

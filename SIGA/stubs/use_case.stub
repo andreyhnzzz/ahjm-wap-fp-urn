@@ -1,0 +1,30 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Application\UseCases;
+
+use Src\{{Context}}\{{Entity}}\Application\DTOs\{{Entity}}DTO;
+use Src\{{Context}}\{{Entity}}\Domain\Contracts\{{Entity}}RepositoryInterface;
+use Src\{{Context}}\{{Entity}}\Domain\Entities\{{Entity}};
+
+/**
+ * Single-purpose orchestrator (SRP): turns a {{Entity}}DTO into a
+ * persisted {{Entity}}. Depends on the repository abstraction only —
+ * the concrete Eloquent{{Entity}}Repository is wired in by the container
+ * (see App\Providers\DomainServiceProvider) and never instantiated here.
+ */
+final class Create{{Entity}}UseCase
+{
+    public function __construct(
+        private readonly {{Entity}}RepositoryInterface $repository,
+    ) {
+    }
+
+    public function handle({{Entity}}DTO $dto): {{Entity}}
+    {
+        ${{entity_lower}} = {{Entity}}::create(name: $dto->name);
+
+        return $this->repository->save(${{entity_lower}});
+    }
+}

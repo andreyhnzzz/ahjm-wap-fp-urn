@@ -1,0 +1,21 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Src\{{Context}}\{{Entity}}\Domain\Exceptions;
+
+use DomainException;
+
+/**
+ * Raised when a {{Entity}} is looked up by identity and does not exist.
+ * Pure PHP — the Presentation layer is responsible for mapping this to
+ * an HTTP status code (e.g. in App\Exceptions\Handler, or a try/catch
+ * in the controller/Livewire component).
+ */
+final class {{Entity}}NotFoundException extends DomainException
+{
+    public static function withId(int $id): self
+    {
+        return new self("{{Entity}} with id [{$id}] was not found.");
+    }
+}
