@@ -26,6 +26,7 @@ final class DomainServiceProvider extends ServiceProvider
         // Map your bounded contexts here.
         // e.g., \Src\IdentityAccess\Role\Domain\Contracts\RoleRepositoryInterface::class
         //    => \Src\IdentityAccess\Role\Infrastructure\Persistence\Repositories\EloquentRoleRepository::class,
+        \Src\IdentityAccess\Permission\Domain\Contracts\PermissionRepositoryInterface::class => \Src\IdentityAccess\Permission\Infrastructure\Persistence\Repositories\EloquentPermissionRepository::class,
     ];
 
     /**
