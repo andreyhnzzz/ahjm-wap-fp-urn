@@ -2,16 +2,15 @@
     <flux:sidebar.profile
         :name="auth()->user()->name"
         :initials="auth()->user()->initials()"
+        :src="auth()->user()->avatarUrl()"
         icon:trailing="chevrons-up-down"
-        data-test="sidebar-menu-button"
-    />
+        data-test="sidebar-menu-button" />
 
     <flux:menu>
         <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
             <flux:avatar
                 :name="auth()->user()->name"
-                :initials="auth()->user()->initials()"
-            />
+                :initials="auth()->user()->initials()" />
             <div class="grid flex-1 text-start text-sm leading-tight">
                 <flux:heading class="truncate">{{ auth()->user()->name }}</flux:heading>
                 <flux:text class="truncate">{{ auth()->user()->email }}</flux:text>
@@ -29,8 +28,7 @@
                     type="submit"
                     icon="arrow-right-start-on-rectangle"
                     class="w-full cursor-pointer"
-                    data-test="logout-button"
-                >
+                    data-test="logout-button">
                     {{ __('Log out') }}
                 </flux:menu.item>
             </form>
