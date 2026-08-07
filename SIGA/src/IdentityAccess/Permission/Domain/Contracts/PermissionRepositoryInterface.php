@@ -13,7 +13,7 @@ interface PermissionRepositoryInterface
     /**
      * @return array{items: array<int, Permission>, total: int}
      */
-    public function paginate(?string $search, ?string $module, int $perPage, int $page): array;
+    public function paginate(?string $search, ?string $module, int $perPage, int $page, ?string $sortBy = null, string $sortDir = 'asc'): array;
 
     public function save(Permission $permission): Permission;
 

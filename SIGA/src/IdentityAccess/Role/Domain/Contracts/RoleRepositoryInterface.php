@@ -19,7 +19,7 @@ interface RoleRepositoryInterface
     /**
      * @return array{items: array<int, Role>, total: int}
      */
-    public function paginate(?string $search, int $perPage, int $page): array;
+    public function paginate(?string $search, int $perPage, int $page, ?string $sortBy = null, string $sortDir = 'asc'): array;
 
     public function save(Role $role): Role;
 

@@ -10,6 +10,9 @@ use Src\IdentityAccess\Permission\Domain\Entities\Permission;
 
 final class EloquentPermissionRepository implements PermissionRepositoryInterface
 {
+    /** @var array<int, string> */
+    private const SORTABLE_COLUMNS = ['module', 'action'];
+
     public function find(int $id): ?Permission
     {
         $model = PermissionModel::query()->find($id);
@@ -17,7 +20,7 @@ final class EloquentPermissionRepository implements PermissionRepositoryInterfac
         return $model ? $this->toDomain($model) : null;
     }
 
-    public function paginate(?string $search, ?string $module, int $perPage, int $page): array
+    public function paginate(?string $search, ?string $module, int $perPage, int $page, ?string $sortBy = null, string $sortDir = 'asc'): array
     {
         $query = PermissionModel::query();
 
@@ -32,7 +35,10 @@ final class EloquentPermissionRepository implements PermissionRepositoryInterfac
             });
         }
 
-        $paginator = $query->orderBy('module')->orderBy('action')->paginate(perPage: $perPage, page: $page);
+        $column = in_array($sortBy, self::SORTABLE_COLUMNS, true) ? $sortBy : 'module';
+        $direction = $sortDir === 'desc' ? 'desc' : 'asc';
+
+        $paginator = $query->orderBy($column, $direction)->orderBy('action')->paginate(perPage: $perPage, page: $page);
 
         return [
             'items' => array_map($this->toDomain(...), $paginator->items()),

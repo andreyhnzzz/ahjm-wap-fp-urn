@@ -16,8 +16,14 @@ final class ListPermissionsUseCase
     /**
      * @return array{items: array<int, Permission>, total: int}
      */
-    public function handle(?string $search = null, ?string $module = null, int $perPage = 10, int $page = 1): array
-    {
-        return $this->repository->paginate($search, $module, $perPage, $page);
+    public function handle(
+        ?string $search = null,
+        ?string $module = null,
+        int $perPage = 10,
+        int $page = 1,
+        ?string $sortBy = null,
+        string $sortDir = 'asc',
+    ): array {
+        return $this->repository->paginate($search, $module, $perPage, $page, $sortBy, $sortDir);
     }
 }
