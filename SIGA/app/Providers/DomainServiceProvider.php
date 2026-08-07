@@ -11,42 +11,25 @@ use Illuminate\Support\ServiceProvider;
 final class DomainServiceProvider extends ServiceProvider
 {
     /**
-     * O(1) deterministic binding map for Domain Interfaces to Infrastructure Implementations.
-     *
-     * Architectural Note:
-     * We explicitly map bindings here rather than using dynamic file scanning (I/O operations)
-     * during the framework's boot cycle. This guarantees blazing fast startup times and
-     * prevents silent failures caused by namespace typos or complex subdirectory structures.
-     *
-     * This array is maintained automatically by `php artisan make:ddd`.
-     *
      * @var array<class-string, class-string>
      */
     private array $domainBindings = [
-        // Map your bounded contexts here.
-        // e.g., \Src\IdentityAccess\Role\Domain\Contracts\RoleRepositoryInterface::class
-        //    => \Src\IdentityAccess\Role\Infrastructure\Persistence\Repositories\EloquentRoleRepository::class,
-        \Src\IdentityAccess\Permission\Domain\Contracts\PermissionRepositoryInterface::class => \Src\IdentityAccess\Permission\Infrastructure\Persistence\Repositories\EloquentPermissionRepository::class,
+        \Src\IdentityAccess\Role\Domain\Contracts\RoleRepositoryInterface::class
+        => \Src\IdentityAccess\Role\Infrastructure\Persistence\Repositories\EloquentRoleRepository::class,
+        \Src\IdentityAccess\Permission\Domain\Contracts\PermissionRepositoryInterface::class
+        => \Src\IdentityAccess\Permission\Infrastructure\Persistence\Repositories\EloquentPermissionRepository::class,
     ];
 
     /**
-     * O(1) deterministic map of Domain Entities to their Authorization Policies.
-     *
-     * Same rationale as $domainBindings: explicit registration over runtime
-     * discovery. Maintained automatically by `php artisan make:ddd --policy`.
-     *
      * @var array<class-string, class-string>
      */
     private array $domainPolicies = [
-        // e.g., \Src\IdentityAccess\Role\Domain\Entities\Role::class
-        //    => \Src\IdentityAccess\Role\Presentation\Policies\RolePolicy::class,
+        \Src\IdentityAccess\Role\Domain\Entities\Role::class
+        => \Src\IdentityAccess\Role\Presentation\Policies\RolePolicy::class,
+        \Src\IdentityAccess\Permission\Domain\Entities\Permission::class
+        => \Src\IdentityAccess\Permission\Presentation\Policies\PermissionPolicy::class,
     ];
 
-    /**
-     * Register bindings in the container.
-     *
-     * Runs during the cheap "register" phase — no I/O, deferred-provider safe.
-     */
     public function register(): void
     {
         foreach ($this->domainBindings as $interface => $implementation) {
@@ -54,16 +37,10 @@ final class DomainServiceProvider extends ServiceProvider
         }
     }
 
-    /**
-     * Boot framework-facing concerns for every bounded context.
-     *
-     * Route loading is skipped entirely when `php artisan route:cache` has
-     * been run, so this scales to N contexts in production with zero added
-     * latency — the filesystem glob only ever runs in local/dev.
-     */
     public function boot(): void
     {
         $this->registerPolicies();
+        $this->registerSuperAdminBypass();
         $this->loadContextRoutes();
     }
 
@@ -74,9 +51,24 @@ final class DomainServiceProvider extends ServiceProvider
         }
     }
 
+    /**
+     * Superadmin passes every authorization check unconditionally. The
+     * RoleSeeder already syncs it every existing permission — this is the
+     * safety net that also covers permissions introduced after the last
+     * seed run, without needing to re-sync anything.
+     */
+    private function registerSuperAdminBypass(): void
+    {
+        Gate::before(function ($user) {
+            return method_exists($user, 'hasRole') && $user->hasRole('Superadmin')
+                ? true
+                : null;
+        });
+    }
+
     private function loadContextRoutes(): void
     {
-        if ($this->app->routesAreCached()) {
+        if (app()->routesAreCached()) {
             return;
         }
 
