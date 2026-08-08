@@ -14,7 +14,9 @@ class Logout
      */
     public function __invoke(): Redirector|RedirectResponse
     {
-        Auth::guard('web')->logout();
+        /** @var \Illuminate\Contracts\Auth\StatefulGuard $guard */
+        $guard = Auth::guard('web');
+        $guard->logout();
 
         Session::invalidate();
         Session::regenerateToken();

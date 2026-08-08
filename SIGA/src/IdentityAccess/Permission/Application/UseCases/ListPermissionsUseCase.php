@@ -14,9 +14,24 @@ final class ListPermissionsUseCase
     ) {}
 
     /**
+     * Full, unpaginated collection — used by client-side (Alpine) tables
+     * that resolve search/sort/pagination in the browser without any
+     * further round-trip to the server. Intended for small catalogs.
+     *
+     * @return array<int, Permission>
+     */
+    public function all(?string $sortBy = null, string $sortDir = 'asc'): array
+    {
+        return $this->repository->all($sortBy, $sortDir);
+    }
+
+    /**
+     * Server-paginated collection — used by server-side tables handling
+     * datasets too large to ship to the client in a single response.
+     *
      * @return array{items: array<int, Permission>, total: int}
      */
-    public function handle(
+    public function paginate(
         ?string $search = null,
         ?string $module = null,
         int $perPage = 10,

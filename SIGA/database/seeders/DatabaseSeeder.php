@@ -20,7 +20,7 @@ class DatabaseSeeder extends Seeder
             PermissionSeeder::class,
             RoleSeeder::class,
         ]);
-
+        /** @var \App\Models\User $user */
         $user = User::factory()->create([
             'name' => 'prueba ISW-521',
             'email' => 'prueba@gmail.com',

@@ -7,6 +7,7 @@ namespace App\Providers;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Contracts\Auth\Authenticatable;
 
 final class DomainServiceProvider extends ServiceProvider
 {
@@ -57,9 +58,10 @@ final class DomainServiceProvider extends ServiceProvider
      * safety net that also covers permissions introduced after the last
      * seed run, without needing to re-sync anything.
      */
+
     private function registerSuperAdminBypass(): void
     {
-        Gate::before(function ($user) {
+        Gate::before(function (Authenticatable $user): ?bool {
             return method_exists($user, 'hasRole') && $user->hasRole('Superadmin')
                 ? true
                 : null;

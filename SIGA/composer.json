@@ -19,6 +19,7 @@
     "livewire/livewire": "^4.1"
   },
   "require-dev": {
+    "calebdw/larastan-livewire": "^2.5",
     "fakerphp/faker": "^1.24",
     "larastan/larastan": "^3.9",
     "laravel/pail": "^1.2.5",
@@ -66,7 +67,7 @@
       "@test"
     ],
     "types:check": [
-      "phpstan analyse"
+      "phpstan analyse --memory-limit=1G"
     ],
     "test": [
       "@php artisan config:clear --ansi",

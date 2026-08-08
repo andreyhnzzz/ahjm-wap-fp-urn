@@ -27,6 +27,20 @@ final class EloquentRoleRepository implements RoleRepositoryInterface
         return $model ? $this->toDomain($model) : null;
     }
 
+    public function all(?string $sortBy = null, string $sortDir = 'asc'): array
+    {
+        $column = in_array($sortBy, self::SORTABLE_COLUMNS, true) ? $sortBy : 'name';
+        $direction = $sortDir === 'desc' ? 'desc' : 'asc';
+
+        /** @var \Illuminate\Database\Eloquent\Collection<int, RoleModel> $models */
+        $models = RoleModel::query()
+            ->with('permissions')
+            ->orderBy($column, $direction)
+            ->get();
+
+        return $models->map($this->toDomain(...))->all();
+    }
+
     public function paginate(?string $search, int $perPage, int $page, ?string $sortBy = null, string $sortDir = 'asc'): array
     {
         $query = RoleModel::query()->with('permissions');

@@ -1,16 +1,37 @@
 @props([
 'headers' => [],
 'paginator' => null,
+'rows' => [],
+'mode' => 'server',
+'searchable' => [],
 'sortKey' => null,
 'sortDir' => 'asc',
+'perPage' => 10,
 'canCreate' => false,
 'canExport' => false,
 'title' => '',
+'tableCols' => '1fr',
+'createAction' => "\$wire.openCreateModal()",
 ])
 
+{{--
+    Full-width by design (.card has `width: 100%` in app.css) — this
+    component fills whatever container it's placed in. Do NOT wrap
+    <x-ui.data-table> in a max-w-* / mx-auto container in the consuming
+    view (role-component.blade.php, permission-component.blade.php,
+    and any future CRUD's *-component.blade.php) unless a narrower
+    table is a deliberate, one-off design decision for that specific
+    screen. The outer <div> in those views only exists because Livewire
+    full-page components require a single root element — it carries no
+    width constraint itself.
+--}}
+
 @php
+$isClient = $mode === 'client';
+
+if (! $isClient) {
 $total = $paginator?->total() ?? 0;
-$perPage = $paginator?->perPage() ?? 10;
+$perPage = $paginator?->perPage() ?? $perPage;
 $currentPage = $paginator?->currentPage() ?? 1;
 $lastPage = max(1, $paginator?->lastPage() ?? 1);
 $from = $total === 0 ? 0 : ($currentPage - 1) * $perPage + 1;
@@ -26,36 +47,61 @@ if ($lastPage <= 7) {
         ->values()
         ->all();
         }
+        }
         @endphp
 
-        <div class="bg-white rounded shadow-sm border border-slate-200 overflow-visible">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-b border-slate-200">
-                <h2 class="font-semibold text-slate-700">{{ $title }}</h2>
-                <div class="flex flex-wrap items-center gap-2">
+        <div class="card"
+            @if ($isClient)
+            x-data="crudTable({
+        rows: @js($rows),
+        searchable: @js($searchable),
+        sortKey: @js($sortKey),
+        sortDir: @js($sortDir),
+        perPage: @js($perPage),
+    })"
+            @endif>
+            <div class="card-head">
+                <span class="card-title">{{ $title }}</span>
+                <div class="card-actions">
                     @if ($canCreate)
-                    <button wire:click="openCreateModal" class="bg-[#e2801f] hover:bg-[#c96f16] text-white text-sm font-medium px-4 py-2 rounded flex items-center gap-2.5">
-                        <span class="w-4 h-4 rounded-full bg-white text-[#e2801f] flex items-center justify-center flex-shrink-0">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
-                                <path d="M12 5v14M5 12h14" />
-                            </svg>
-                        </span>
-                        {{ __('Add') }}
+                    <button type="button" class="btn btn-orange" @click="{{ $createAction }}">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span>{{ __('Add') }}</span>
                     </button>
                     @endif
 
                     @if ($canExport)
-                    <div class="relative" x-data="{ open: false }">
-                        <button type="button" x-on:click="open = !open" class="bg-[#1a3868] hover:bg-[#142c53] text-white text-sm font-medium px-4 py-2 rounded flex items-center gap-2">
-                            <span>&#9776;</span> {{ __('Download') }}
+                    <div class="download-wrap" x-data="{ open: false }" x-on:click.outside="open = false">
+                        <button type="button" class="btn btn-primary" @click="open = !open">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            <span>{{ __('Download') }}</span>
                         </button>
-                        <div x-show="open" x-on:click.outside="open = false" x-transition class="absolute right-0 mt-1 w-52 bg-white border border-slate-200 rounded shadow-lg z-20 py-1" style="display: none;">
-                            <button type="button" wire:click="exportExcel" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
-                                <img src="{{ asset('images/icons/xls-icon.png') }}" class="w-9 h-9 flex-shrink-0 object-contain" alt="XLS">
-                                XLS
+                        <div class="download-menu" :class="{ 'open': open }">
+                            <button type="button" class="download-item" wire:click="exportPdf" x-on:click="open = false">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-red-600" style="color:#DC2626">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                    <line x1="9" y1="13" x2="9" y2="17" />
+                                    <line x1="12" y1="13" x2="12" y2="17" />
+                                    <line x1="15" y1="13" x2="15" y2="17" />
+                                </svg>
+                                <span>{{ __('Export to PDF') }}</span>
                             </button>
-                            <button type="button" wire:click="exportPdf" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left">
-                                <img src="{{ asset('images/icons/pdf-icon.png') }}" class="w-9 h-9 flex-shrink-0 object-contain" alt="PDF">
-                                PDF
+                            <div class="download-divider"></div>
+                            <button type="button" class="download-item" wire:click="exportExcel" x-on:click="open = false">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#16A34A">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                    <path d="M9 13l2.5 5L14 13" />
+                                </svg>
+                                <span>{{ __('Export to Excel') }}</span>
                             </button>
                         </div>
                     </div>
@@ -63,53 +109,78 @@ if ($lastPage <= 7) {
                 </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 text-sm text-slate-600 border-b border-slate-200 bg-slate-50">
-                <div class="flex items-center gap-2">
-                    <span class="uppercase text-xs tracking-wide">{{ __('Show') }}</span>
-                    <select wire:model.live="perPage" class="border border-slate-300 rounded px-2 py-1 text-sm">
+            <div class="card-controls">
+                <div class="control-group">
+                    <span>{{ __('Show') }}</span>
+                    @if ($isClient)
+                    <select x-model.number="perPage">
                         <option value="10">10</option>
                         <option value="25">25</option>
                         <option value="50">50</option>
                     </select>
-                    <span class="uppercase text-xs tracking-wide">{{ __('Records') }}</span>
+                    @else
+                    <select wire:model.live="perPage">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                    @endif
+                    <span>{{ __('Records') }}</span>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="uppercase text-xs tracking-wide">{{ __('Search') }}:</span>
-                    <input wire:model.live.debounce.400ms="search" class="border border-slate-300 rounded px-2 py-1 text-sm w-full sm:w-56">
+                <div class="control-group">
+                    <span>{{ __('Search') }}:</span>
+                    @if ($isClient)
+                    <input type="text" x-model.debounce.150ms="search">
+                    @else
+                    <input type="text" wire:model.live.debounce.400ms="search">
+                    @endif
                 </div>
             </div>
 
-            <div class="overflow-x-auto" wire:loading.class="opacity-50" wire:target="search,perPage,sort,previousPage,nextPage,gotoPage">
-                <table class="w-full text-sm min-w-[900px]">
-                    <thead>
-                        <tr class="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                            @foreach ($headers as $header)
-                            <th class="px-4 py-3 font-semibold {{ ($header['sortable'] ?? false) ? 'cursor-pointer select-none' : '' }}"
-                                @if ($header['sortable'] ?? false) wire:click="sort('{{ $header['key'] }}')" @endif>
-                                <span class="flex items-center gap-1">
-                                    {{ $header['label'] }}
-                                    @if ($header['sortable'] ?? false)
-                                    <span class="text-slate-300">
-                                        @if ($sortKey === $header['key'])
-                                        {{ $sortDir === 'asc' ? '▲' : '▼' }}
-                                        @else
-                                        ↕
-                                        @endif
-                                    </span>
-                                    @endif
-                                </span>
-                            </th>
-                            @endforeach
-                            <th class="px-4 py-3 font-semibold">{{ __('Actions') }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {{ $slot }}
-                    </tbody>
-                </table>
+            <div class="table-scroll"
+                @if ($isClient)
+                wire:loading.class="opacity-50" wire:target="delete,save,exportPdf,exportExcel"
+                @else
+                wire:loading.class="opacity-50" wire:target="search,perPage,sort,previousPage,nextPage,gotoPage,delete,save,exportPdf,exportExcel"
+                @endif>
+                <div class="table-inner" style="--table-cols: {{ $tableCols }};" role="table">
+                    <div class="data-row data-row-head" role="row">
+                        @foreach ($headers as $header)
+                        <span data-sortable="{{ ($header['sortable'] ?? false) ? 'true' : 'false' }}"
+                            role="columnheader"
+                            @if ($header['sortable'] ?? false)
+                            @if ($isClient) @click="sort('{{ $header['key'] }}')" @else wire:click="sort('{{ $header['key'] }}')" @endif
+                            @endif>
+                            {{ $header['label'] }}
+                            @if ($header['sortable'] ?? false)
+                            @if ($isClient)
+                            <span x-text="sortKey === '{{ $header['key'] }}' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'"></span>
+                            @else
+                            <span>
+                                @if ($sortKey === $header['key'])
+                                {{ $sortDir === 'asc' ? '▲' : '▼' }}
+                                @else
+                                ↕
+                                @endif
+                            </span>
+                            @endif
+                            @endif
+                        </span>
+                        @endforeach
+                        <span>{{ __('Actions') }}</span>
+                    </div>
+
+                    {{ $slot }}
+                </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 text-sm text-slate-600">
+            <div class="card-footer">
+                @if ($isClient)
+                <span>
+                    <span x-show="total === 0">{{ __('No records found') }}</span>
+                    <span x-show="total > 0" x-text="paginationSummary(@js(__('Showing :from to :to of :total records')))"></span>
+                </span>
+                @else
                 <span>
                     @if ($total === 0)
                     {{ __('No records found') }}
@@ -117,21 +188,29 @@ if ($lastPage <= 7) {
                     {{ __('Showing :from to :to of :total records', ['from' => $from, 'to' => $to, 'total' => $total]) }}
                     @endif
                 </span>
-                <div class="flex flex-wrap items-center gap-1">
-                    <button wire:click="previousPage" @disabled($currentPage <=1) class="border border-slate-300 rounded px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-40">{{ __('Previous') }}</button>
-                    <div class="flex items-center gap-1">
-                        @php $prev = null; @endphp
-                        @foreach ($pageSet as $p)
-                        @if (!is_null($prev) && $p - $prev > 1)
-                        <span class="px-2 py-1 text-slate-400">…</span>
-                        @endif
-                        <button wire:click="gotoPage({{ $p }})" class="border rounded px-3 py-1 {{ $p === $currentPage ? 'bg-[#1a3868] text-white border-[#1a3868]' : 'border-slate-300 text-slate-600 hover:bg-slate-50' }}">
-                            {{ $p }}
-                        </button>
-                        @php $prev = $p; @endphp
-                        @endforeach
-                    </div>
-                    <button wire:click="nextPage" @disabled($currentPage>= $lastPage) class="border border-slate-300 rounded px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-40">{{ __('Next') }}</button>
+                @endif
+                <div class="pagination">
+                    @if ($isClient)
+                    <button type="button" class="page-btn" :class="{ 'disabled': page <= 1 }" :disabled="page <= 1" @click="previousPage()">{{ __('Previous') }}</button>
+                    <template x-for="(p, index) in pageSet" :key="p">
+                        <span style="display:flex;align-items:center;gap:6px;">
+                            <span x-show="index > 0 && p - pageSet[index - 1] > 1" class="page-ellipsis">…</span>
+                            <button type="button" class="page-btn" :class="{ 'active': p === page }" @click="gotoPage(p)" x-text="p"></button>
+                        </span>
+                    </template>
+                    <button type="button" class="page-btn" :class="{ 'disabled': page >= lastPage }" :disabled="page >= lastPage" @click="nextPage()">{{ __('Next') }}</button>
+                    @else
+                    <button type="button" class="page-btn {{ $currentPage <= 1 ? 'disabled' : '' }}" @disabled($currentPage <=1) wire:click="previousPage">{{ __('Previous') }}</button>
+                    @php $prev = null; @endphp
+                    @foreach ($pageSet as $p)
+                    @if (!is_null($prev) && $p - $prev > 1)
+                    <span class="page-ellipsis">…</span>
+                    @endif
+                    <button type="button" class="page-btn {{ $p === $currentPage ? 'active' : '' }}" wire:click="gotoPage({{ $p }})">{{ $p }}</button>
+                    @php $prev = $p; @endphp
+                    @endforeach
+                    <button type="button" class="page-btn {{ $currentPage >= $lastPage ? 'disabled' : '' }}" @disabled($currentPage>= $lastPage) wire:click="nextPage">{{ __('Next') }}</button>
+                    @endif
                 </div>
             </div>
         </div>

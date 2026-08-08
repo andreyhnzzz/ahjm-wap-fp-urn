@@ -1,4 +1,4 @@
-<aside class="sidebar" :class="{ 'mobile-open': mobileOpen, 'collapsed': collapsed }" id="sidebar">
+<aside class="sidebar" x-persist="sidebar" :class="{ 'mobile-open': mobileOpen, 'collapsed': collapsed }" id="sidebar">
     <div class="logo-row" id="logoRow">
         <div class="logo-wrap" id="logoWrap">
             <img src="{{ asset('images/logo-utn.AVIF') }}" alt="UTN" class="logo-img">
@@ -12,7 +12,7 @@
     <nav class="nav-scroll">
         <div class="nav-group">
             <span class="nav-label" data-labels>{{ __('MAIN') }}</span>
-            <a href="#" @click.prevent="setSection('panel')" class="nav-item" :class="{ 'active': currentSection === 'panel' }">
+            <a href="{{ route('dashboard') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
                     <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
@@ -29,7 +29,7 @@
         <div class="nav-group">
             <span class="nav-label" data-labels>{{ __('SYSTEM ADMINISTRATION') }}</span>
 
-            <a href="#" @click.prevent="setSection('roles')" class="nav-item" :class="{ 'active': currentSection === 'roles' }">
+            <a href="{{ route('identityaccess.role.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                     <path d="M9 12l2 2 4-4"></path>
@@ -40,7 +40,7 @@
                 </svg>
             </a>
 
-            <a href="#" @click.prevent="setSection('permisos')" class="nav-item" :class="{ 'active': currentSection === 'permisos' }">
+            <a href="{{ route('identityaccess.permission.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="11" width="18" height="10" rx="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
@@ -55,7 +55,7 @@
         <div class="nav-group">
             <span class="nav-label" data-labels>{{ __('ACADEMIC') }}</span>
 
-            <a href="#" @click.prevent="setSection('oferta')" class="nav-item" :class="{ 'active': currentSection === 'oferta' }">
+            <a href="#" @click.prevent="setSection('oferta')" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 6.5c-1.6-1.3-3.8-2-6-2-.6 0-1 .4-1 1v11c0 .6.4 1 1 1 2.2 0 4.4.7 6 2 1.6-1.3 3.8-2 6-2 .6 0 1-.4 1-1v-11c0-.6-.4-1-1-1-2.2 0-4.4.7-6 2z"></path>
                     <line x1="12" y1="6.5" x2="12" y2="19.5"></line>
@@ -66,7 +66,7 @@
                 </svg>
             </a>
 
-            <a href="#" @click.prevent="setSection('docentes')" class="nav-item" :class="{ 'active': currentSection === 'docentes' }">
+            <a href="#" @click.prevent="setSection('docentes')" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
                     <circle cx="10" cy="7" r="4"></circle>
@@ -79,7 +79,7 @@
                 </svg>
             </a>
 
-            <a href="#" @click.prevent="setSection('aulas')" class="nav-item" :class="{ 'active': currentSection === 'aulas' }">
+            <a href="#" @click.prevent="setSection('aulas')" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="4" y="2" width="16" height="20" rx="1"></rect>
                     <line x1="9" y1="7" x2="9" y2="7.01"></line>
@@ -97,8 +97,8 @@
                 </svg>
             </a>
 
-            <div x-data="{ open: true }">
-                <div class="nav-item nav-parent" :class="{ 'active': currentSection === 'grupos' }" @click="open = !open; setSection('grupos', currentSub || 'activos')">
+            <div x-data="{ open: true }" x-on:livewire:navigated.window="open = false">
+                <div class="nav-item nav-parent" @click="open = !open; setSection('grupos', currentSub || 'activos')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                         <polyline points="2 17 12 22 22 17"></polyline>
@@ -110,13 +110,13 @@
                     </svg>
                 </div>
                 <div class="nav-children" :class="{ 'open': open }" data-labels>
-                    <a href="#" class="nav-child" :class="{ 'active': currentSection === 'grupos' && currentSub === 'activos' }" @click.prevent="setSection('grupos', 'activos')">
+                    <a href="#" class="nav-child" @click.prevent="setSection('grupos', 'activos')">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <polyline points="9 6 15 12 9 18"></polyline>
                         </svg>
                         <span>{{ __('Active Groups') }}</span>
                     </a>
-                    <a href="#" class="nav-child" :class="{ 'active': currentSection === 'grupos' && currentSub === 'historial' }" @click.prevent="setSection('grupos', 'historial')">
+                    <a href="#" class="nav-child" @click.prevent="setSection('grupos', 'historial')">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <polyline points="9 6 15 12 9 18"></polyline>
                         </svg>
@@ -129,7 +129,7 @@
         <div class="nav-group">
             <span class="nav-label" data-labels>{{ __('TRACKING') }}</span>
 
-            <a href="#" @click.prevent="setSection('riesgos')" class="nav-item" :class="{ 'active': currentSection === 'riesgos' }">
+            <a href="#" @click.prevent="setSection('riesgos')" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 3 2 20h20L12 3z"></path>
                     <line x1="12" y1="9.5" x2="12" y2="14"></line>
@@ -141,8 +141,8 @@
                 </svg>
             </a>
 
-            <div x-data="{ open: false }">
-                <div class="nav-item nav-parent" :class="{ 'active': currentSection === 'reportes' }" @click="open = !open; setSection('reportes', currentSub || 'reporte1')">
+            <div x-data="{ open: false }" x-on:livewire:navigated.window="open = false">
+                <div class="nav-item nav-parent" @click="open = !open; setSection('reportes', currentSub || 'reporte1')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
@@ -155,13 +155,13 @@
                     </svg>
                 </div>
                 <div class="nav-children" :class="{ 'open': open }" data-labels>
-                    <a href="#" class="nav-child" :class="{ 'active': currentSection === 'reportes' && currentSub === 'reporte1' }" @click.prevent="setSection('reportes', 'reporte1')">
+                    <a href="#" class="nav-child" @click.prevent="setSection('reportes', 'reporte1')">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <polyline points="9 6 15 12 9 18"></polyline>
                         </svg>
                         <span>{{ __('Report 1') }}</span>
                     </a>
-                    <a href="#" class="nav-child" :class="{ 'active': currentSection === 'reportes' && currentSub === 'reporte2' }" @click.prevent="setSection('reportes', 'reporte2')">
+                    <a href="#" class="nav-child" @click.prevent="setSection('reportes', 'reporte2')">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <polyline points="9 6 15 12 9 18"></polyline>
                         </svg>

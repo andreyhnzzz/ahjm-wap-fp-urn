@@ -19,11 +19,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 trait HasRolesAndPermissions
 {
+    /**
+     * @return BelongsToMany<Role, $this>
+     */
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'role_user');
     }
 
+    /**
+     * @return BelongsToMany<Permission, $this>
+     */
     public function permissions(): BelongsToMany
     {
         return $this->belongsToMany(Permission::class, 'permission_user');
@@ -33,7 +39,9 @@ trait HasRolesAndPermissions
     {
         return $this->roles->contains('name', $role);
     }
-
+    /**
+     * @param array<int, string> $roles
+     */
     public function hasAnyRole(array $roles): bool
     {
         return $this->roles->pluck('name')->intersect($roles)->isNotEmpty();

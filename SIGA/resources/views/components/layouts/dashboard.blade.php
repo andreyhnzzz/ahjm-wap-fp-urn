@@ -58,10 +58,23 @@
             const zoom = level === 'aaa' ? 1.3 : level === 'aa' ? 1.15 : 1;
             document.documentElement.style.setProperty('--font-zoom', zoom);
         }
-    }">
+    }" x-on:livewire:navigated.window="currentSection = ''; currentSub = ''">
 
         <div class="backdrop" :class="{ 'show': mobileOpen }" @click="mobileOpen = false"></div>
 
+        {{--
+            Persistence is declared with the `x-persist` HTML attribute directly
+            on <aside class="sidebar"> (inside the component itself), NOT with
+            the `@persist(...) @endpersist` Blade directive here. That directive
+            wraps its content in an extra `<div x-persist="sidebar">`, which
+            becomes the *actual* flex child of `.app` instead of `<aside>` —
+            breaking `align-items: stretch` so the sidebar's white background
+            no longer reaches the bottom of the viewport (its height collapses
+            to its content instead of stretching). This is a documented Livewire
+            behavior (see livewire/livewire#5936); the attribute form avoids the
+            extra wrapper entirely while still preserving the same DOM node
+            (and its Alpine state) across wire:navigate transitions.
+        --}}
         <x-siga.sidebar />
 
         <div class="main">

@@ -21,6 +21,7 @@ class DDDStructure extends Command
                             {--X|exception : Scaffold Domain Exception}
                             {--L|livewire : Scaffold Livewire Component (Primary Adapter)}
                             {--P|policy : Scaffold Authorization Policy}
+                            {--A|api : Scaffold an HTTP API adapter (Controller, FormRequest, routes). Opt-in only — this app is 100% Livewire SPA, so Livewire components (and their Form Objects) are the default Presentation adapter. Only add this when the business genuinely needs to expose a REST endpoint.}
                             {--F|force : Overwrite an existing module (deletes it first)}';
 
     /**
@@ -29,16 +30,21 @@ class DDDStructure extends Command
     protected $description = 'Scaffolds a pragmatic, high-cohesion DDD directory structure tailored for the TALL stack.';
 
     /**
-     * Stubs generated unconditionally — the minimum viable slice through every layer.
+     * Stubs generated unconditionally — the minimum viable slice through
+     * every layer for a Livewire-first module. No HTTP adapter by
+     * default: keeping Controller/FormRequest/routes out of the base
+     * scaffold avoids maintaining a primary adapter nothing calls.
      */
     private const REQUIRED_STUBS = [
-        'route.stub', 'controller.stub', 'request.stub',
-        'repository.stub', 'dto.stub', 'use_case.stub',
-        'contract.stub', 'entity.stub',
+        'repository.stub',
+        'dto.stub',
+        'use_case.stub',
+        'contract.stub',
+        'entity.stub',
     ];
 
     /**
-     * Stubs gated behind a flag, keyed by their option name.
+     * Stubs gated behind a single flag, keyed by their option name.
      */
     private const OPTIONAL_STUBS = [
         'event' => 'event.stub',
@@ -49,12 +55,23 @@ class DDDStructure extends Command
     ];
 
     /**
+     * The HTTP API adapter is a single opt-in unit — Controller, Request
+     * and routes only make sense together, so one flag (--api) toggles
+     * all three rather than three separate flags.
+     */
+    private const API_STUBS = [
+        'route.stub',
+        'controller.stub',
+        'request.stub',
+    ];
+
+    /**
      * Execute the console command.
      */
     public function handle(): int
     {
-        $context = Str::studly($this->argument('context'));
-        $entity  = Str::studly($this->argument('entity'));
+        $context = Str::studly((string) $this->argument('context'));
+        $entity  = Str::studly((string) $this->argument('entity'));
         $basePath = base_path("src/{$context}/{$entity}");
 
         $stubsToGenerate = $this->resolveStubsToGenerate();
@@ -116,7 +133,9 @@ class DDDStructure extends Command
     // ---------------------------------------------------------------
     // Pre-flight validation
     // ---------------------------------------------------------------
-
+    /**
+     * @return array<int, string>
+     */
     private function resolveStubsToGenerate(): array
     {
         $stubs = self::REQUIRED_STUBS;
@@ -127,14 +146,20 @@ class DDDStructure extends Command
             }
         }
 
+        if ($this->option('api')) {
+            $stubs = array_merge($stubs, self::API_STUBS);
+        }
+
         return $stubs;
     }
-
+    /**
+     * @param array<int, string> $stubs
+     */
     private function assertStubsExist(array $stubs): bool
     {
         $missing = array_values(array_filter(
             $stubs,
-            fn (string $stub) => !File::exists(base_path("stubs/ddd/{$stub}"))
+            fn(string $stub) => !File::exists(base_path("stubs/ddd/{$stub}"))
         ));
 
         if (empty($missing)) {
@@ -204,13 +229,18 @@ class DDDStructure extends Command
             // 3. Infrastructure Layer (Concrete implementations, e.g., Eloquent Repositories)
             "{$basePath}/Infrastructure/Persistence/Repositories",
 
-            // 4. Presentation Layer (Primary Adapters: Web Controllers, Livewire SFCs)
-            "{$basePath}/Presentation/Controllers",
+            // 4. Presentation Layer (Primary Adapters). Livewire is the
+            // default and only guaranteed adapter — Controllers/Requests/
+            // Routes are HTTP-specific and only created with --api.
             "{$basePath}/Presentation/Livewire",
-            "{$basePath}/Presentation/Routes",
-            "{$basePath}/Presentation/Requests",
             "{$basePath}/Presentation/Policies",
         ];
+
+        if ($this->option('api')) {
+            $directories[] = "{$basePath}/Presentation/Controllers";
+            $directories[] = "{$basePath}/Presentation/Requests";
+            $directories[] = "{$basePath}/Presentation/Routes";
+        }
 
         foreach ($directories as $dir) {
             File::makeDirectory($dir, 0755, true, true);
@@ -223,11 +253,6 @@ class DDDStructure extends Command
     {
         $this->newLine();
         $this->info("Generating base stubs across layers...");
-
-        // Presentation Layer: Tailored for web delivery mechanisms.
-        $this->generateFromStub('route.stub', "{$basePath}/Presentation/Routes/web.php", $context, $entity);
-        $this->generateFromStub('controller.stub', "{$basePath}/Presentation/Controllers/{$entity}Controller.php", $context, $entity);
-        $this->generateFromStub('request.stub', "{$basePath}/Presentation/Requests/{$entity}Request.php", $context, $entity);
 
         // Infrastructure Layer: Relying on Repositories to abstract Eloquent logic.
         $this->generateFromStub('repository.stub', "{$basePath}/Infrastructure/Persistence/Repositories/Eloquent{$entity}Repository.php", $context, $entity);
@@ -260,12 +285,22 @@ class DDDStructure extends Command
             $generated = true;
         }
         if ($this->option('livewire')) {
-            // Generates a Single File Component (Volt/Livewire) acting as a modern primary adapter.
+            // Generates a Single File Component (Livewire flavor) acting as
+            // the default primary adapter for this module.
             $this->generateFromStub('livewire.stub', "{$basePath}/Presentation/Livewire/{$entity}Component.php", $context, $entity);
             $generated = true;
         }
         if ($this->option('policy')) {
             $this->generateFromStub('policy.stub', "{$basePath}/Presentation/Policies/{$entity}Policy.php", $context, $entity);
+            $generated = true;
+        }
+        if ($this->option('api')) {
+            // Opt-in HTTP adapter. Only scaffold this when the business
+            // genuinely needs a REST endpoint — the default Presentation
+            // adapter for this app is Livewire, not Controllers.
+            $this->generateFromStub('route.stub', "{$basePath}/Presentation/Routes/web.php", $context, $entity);
+            $this->generateFromStub('controller.stub', "{$basePath}/Presentation/Controllers/{$entity}Controller.php", $context, $entity);
+            $this->generateFromStub('request.stub', "{$basePath}/Presentation/Requests/{$entity}Request.php", $context, $entity);
             $generated = true;
         }
 

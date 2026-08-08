@@ -1,3 +1,5 @@
+@props(['title' => null, 'subtitle' => null])
+
 <header class="topbar">
     <div class="topbar-left">
         <div class="icon-btn" title="{{ __('Expand/collapse menu') }}" @click="window.innerWidth < 760 ? mobileOpen = !mobileOpen : collapsed = !collapsed">
@@ -8,8 +10,14 @@
             </svg>
         </div>
         <div class="title-wrap">
-            <div class="title" x-text="sections[currentSection].title"></div>
-            <div class="subtitle" x-text="sections[currentSection].subtitle"></div>
+            {{-- Server-rendered from the current page's ->layout(..., ['title' => ..., 'subtitle' => ...])
+                 call — NOT Alpine's `sections[currentSection]`. That client-side map only reflects
+                 the fake, not-yet-built sections (Oferta académica, Docentes, etc.) that still live
+                 on the /dashboard route and switch via setSection(); it never updates on a real
+                 wire:navigate transition (Alpine state survives the page morph), which is exactly
+                 why Roles/Permissions used to show the wrong topbar title. --}}
+            <div class="title">{{ $title ?? __('Main Panel') }}</div>
+            <div class="subtitle">{{ $subtitle ?? __('General overview of the academic system') }}</div>
         </div>
     </div>
 

@@ -1,13 +1,21 @@
 includes:
     - vendor/larastan/larastan/extension.neon
     - vendor/nesbot/carbon/extension.neon
+    - ./vendor/calebdw/larastan-livewire/extension.neon
 
 parameters:
     paths:
         - app/
+        - src
         - bootstrap/app.php
         - config/
         - database/
         - routes/
 
     level: 7
+
+    ignoreErrors:
+        -
+            identifier: method.notFound
+            message: '#Call to an undefined method Illuminate\\Contracts\\View\\View::layout\(\)#'
+            path: src/*/*/Presentation/Livewire/*.php

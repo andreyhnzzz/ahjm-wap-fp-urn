@@ -6,7 +6,6 @@ namespace Src\IdentityAccess\Role\Domain\Contracts;
 
 use Src\IdentityAccess\Role\Domain\Entities\Role;
 
-
 /**
  * Port (in the Hexagonal sense) that Infrastructure adapters must
  * implement. The Domain and Application layers depend only on this
@@ -15,6 +14,15 @@ use Src\IdentityAccess\Role\Domain\Entities\Role;
 interface RoleRepositoryInterface
 {
     public function find(int $id): ?Role;
+
+    /**
+     * Full, unpaginated collection — backs client-side (Alpine) tables
+     * that resolve search/sort/pagination in the browser. Reserved for
+     * datasets small enough to ship to the client in one response.
+     *
+     * @return array<int, Role>
+     */
+    public function all(?string $sortBy = null, string $sortDir = 'asc'): array;
 
     /**
      * @return array{items: array<int, Role>, total: int}

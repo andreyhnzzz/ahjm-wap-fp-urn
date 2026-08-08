@@ -96,11 +96,27 @@ select:focus[data-flux-control] {
     --navText: #3e4c63;
     --primary: #0b3c8c;
     --primarySoft: #dce7fa;
+    --tableHeadBg: #f6f8fc;
     --shadow: 0 1px 2px rgba(15, 32, 68, 0.06);
     --logout: #b42318;
     --font-zoom: 1;
-  }
 
+    /* Role "Tipo" / generic status badges. Defined as tokens (not inline
+       hex per-row) specifically so they adapt to [data-theme="dark"]
+       automatically, unlike the original static mock which recomputed
+       inline styles in JS based on a dark-mode flag. */
+    --badgeSystemBg: #e2e8f2;
+    --badgeSystemText: #1a3868;
+    --badgeCustomBg: #e6f0e2;
+    --badgeCustomText: #4a8f3c;
+
+    /* Row action icons — matches the approved design's edit (amber) /
+       delete (red) circular icon buttons exactly. */
+    --actionEditBg: #fff3d6;
+    --actionEditText: #93650b;
+    --actionDeleteBg: #fde7e7;
+    --actionDeleteText: #b42318;
+  }
   [data-theme="dark"] {
     --appBg: #060d1c;
     --sidebarBg: #0c1830;
@@ -116,8 +132,19 @@ select:focus[data-flux-control] {
     --navText: #bccae8;
     --primary: #82acf7;
     --primarySoft: #1c3564;
+    --tableHeadBg: #0f1e3b;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
     --logout: #ff8686;
+
+    --badgeSystemBg: #1c2c4d;
+    --badgeSystemText: #a9c0ec;
+    --badgeCustomBg: #16321f;
+    --badgeCustomText: #7fd28f;
+
+    --actionEditBg: #3a2c0e;
+    --actionEditText: #f2c063;
+    --actionDeleteBg: #3a1620;
+    --actionDeleteText: #ff9b9b;
   }
 
   ::-webkit-scrollbar {
@@ -534,6 +561,614 @@ select:focus[data-flux-control] {
     min-height: 60vh;
   }
 
+  /* ---------------------------------------------------------------
+     Card / data-table primitives — shared by every CRUD screen
+     (Roles, Permissions, and any future module using <x-ui.data-table>).
+     Ported 1:1 from the approved design (styles.css) so visual output
+     matches exactly; only the grid-template-columns proportions are
+     computed per-table since each CRUD has a different column count.
+     --------------------------------------------------------------- */
+  .card {
+    width: 100%;
+    background: var(--cardBg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--textPrimary);
+  }
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+  }
+  .btn-orange {
+    background: #d9770e;
+  }
+  .btn-primary {
+    background: var(--primary);
+  }
+  .btn-secondary {
+    background: #6b7a94;
+  }
+  .download-wrap {
+    position: relative;
+  }
+  .download-menu {
+    display: none;
+    position: absolute;
+    top: 44px;
+    right: 0;
+    width: 200px;
+    background: var(--cardBg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(10, 20, 40, 0.18);
+    overflow: hidden;
+    z-index: 10;
+  }
+  .download-menu.open {
+    display: block;
+  }
+  .download-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    width: 100%;
+    background: transparent;
+    border: none;
+    text-align: left;
+    font-family: inherit;
+  }
+  .download-item svg {
+    flex-shrink: 0;
+  }
+  .download-item span {
+    font-size: 13.5px;
+    color: var(--textPrimary);
+    font-weight: 600;
+  }
+  .download-divider {
+    height: 1px;
+    background: var(--border);
+  }
+
+  .card-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 20px;
+  }
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--textMuted);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .control-group select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--cardBg);
+    color: var(--textPrimary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .control-group input {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--cardBg);
+    color: var(--textPrimary);
+    font-size: 13.5px;
+    width: 200px;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+  .table-inner {
+    min-width: 640px;
+  }
+  /* --table-cols is set per-view on .table-inner (each CRUD has a
+     different column count), e.g. style="--table-cols: 2.2fr 1.3fr 1fr 1fr;" */
+  .data-row {
+    display: grid;
+    grid-template-columns: var(--table-cols, 1fr);
+    padding: 13px 20px;
+    align-items: center;
+    font-size: 13.5px;
+    color: var(--textPrimary);
+    border-top: 1px solid var(--border);
+  }
+  .data-row-head {
+    display: grid;
+    grid-template-columns: var(--table-cols, 1fr);
+    background: var(--tableHeadBg);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--textMuted);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    border-top: none;
+    padding: 12px 20px;
+    cursor: default;
+  }
+  .data-row-head > span[data-sortable] {
+    cursor: pointer;
+    user-select: none;
+  }
+  .name-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .name-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11.5px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .name-text {
+    font-weight: 600;
+    color: var(--primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .module-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    background: var(--primarySoft);
+    color: var(--primary);
+    width: fit-content;
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    width: fit-content;
+  }
+  .status-badge.system {
+    background: var(--badgeSystemBg);
+    color: var(--badgeSystemText);
+  }
+  .status-badge.custom {
+    background: var(--badgeCustomBg);
+    color: var(--badgeCustomText);
+  }
+  .actions-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .action-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: none;
+    flex-shrink: 0;
+  }
+  .action-icon.edit {
+    background: var(--actionEditBg);
+    color: var(--actionEditText);
+  }
+  .action-icon.delete {
+    background: var(--actionDeleteBg);
+    color: var(--actionDeleteText);
+  }
+  .empty-row {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--textMuted);
+    font-size: 13.5px;
+  }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--textMuted);
+  }
+  .pagination {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .page-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    color: var(--textSecondary);
+    background: transparent;
+    font-family: inherit;
+  }
+  .page-btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+  .page-btn.disabled,
+  .page-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+  .page-ellipsis {
+    padding: 8px 4px;
+    color: var(--textMuted);
+  }
+
+  /* ---------------------------------------------------------------
+     Modal — shared shell for every create/edit CRUD form.
+     --------------------------------------------------------------- */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 13, 28, 0.5);
+    z-index: 60;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-backdrop.open {
+    display: flex;
+  }
+  .modal {
+    background: var(--cardBg);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--textPrimary);
+  }
+  .modal-close {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--textMuted);
+    border: none;
+    background: transparent;
+  }
+  .modal-body {
+    padding: 20px 22px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .form-field label {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--textPrimary);
+  }
+  .form-field input[type="text"],
+  .form-field textarea {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--cardBg);
+    color: var(--textPrimary);
+    font-size: 13.5px;
+    font-family: inherit;
+    width: 100%;
+  }
+  .form-field input[type="text"]:focus,
+  .form-field textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(11, 60, 140, 0.12);
+  }
+  .form-field input.has-error,
+  .form-field textarea.has-error {
+    border-color: var(--logout);
+  }
+  .form-field textarea {
+    resize: none;
+  }
+  .form-error {
+    font-size: 12.5px;
+    color: var(--logout);
+  }
+  .permissions-list {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .permission-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--textPrimary);
+    font-weight: 400;
+  }
+  .permission-item input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .permission-item span {
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+  .permission-empty {
+    padding: 10px;
+    font-size: 13px;
+    color: var(--textMuted);
+    text-align: center;
+  }
+  .modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 22px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ---------------------------------------------------------------
+     Delete confirmation — reusable 2-step overlay (confirm -> success)
+     shared by every CRUD's delete action. Ported 1:1 from the approved
+     design; colors kept as their own tokens (not --primary etc.) since
+     this is a deliberately distinct, attention-grabbing palette, but
+     still theme-aware so it doesn't look broken in dark mode.
+     --------------------------------------------------------------- */
+  :root {
+    --delWarnRing: #f8bb86;
+    --delConfirmBg: #3085d6;
+    --delConfirmBgHover: #2a75bd;
+    --delCancelBg: #dc3545;
+    --delCancelBgHover: #c62838;
+    --delOkBg: #6e6fed;
+    --delOkBgHover: #5c5de0;
+    --delSuccessBg: #eef9ee;
+  }
+  [data-theme="dark"] {
+    --delWarnRing: #d99a5b;
+    --delConfirmBg: #3f8fdc;
+    --delConfirmBgHover: #5b9fe0;
+    --delCancelBg: #e3495c;
+    --delCancelBgHover: #ea6b7b;
+    --delOkBg: #8586f2;
+    --delOkBgHover: #9d9ef5;
+    --delSuccessBg: #123321;
+  }
+
+  @keyframes del-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes del-scale-in {
+    from {
+      opacity: 0;
+      transform: translateY(-12px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes del-check-line {
+    from {
+      stroke-dashoffset: 60;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .del-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 70;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+  .del-overlay.open {
+    display: flex;
+    animation: del-fade-in 0.15s ease-out;
+  }
+  .del-card {
+    background: var(--cardBg);
+    border-radius: 10px;
+    width: 100%;
+    max-width: 420px;
+    padding: 36px 32px 32px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+    animation: del-scale-in 0.18s ease-out;
+  }
+  .del-icon-warn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--delWarnRing);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    font-size: 38px;
+    font-weight: 600;
+    color: var(--delWarnRing);
+    line-height: 1;
+  }
+  .del-icon-success {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--delSuccessBg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .del-icon-success path {
+    animation: del-check-line 0.35s ease-out 0.1s both;
+  }
+  .del-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--textPrimary);
+    margin: 0 0 10px;
+  }
+  .del-text {
+    font-size: 15px;
+    color: var(--textSecondary);
+    margin: 0 0 26px;
+  }
+  .del-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+  .del-btn-confirm {
+    background: var(--delConfirmBg);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 11px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    min-width: 130px;
+    font-family: inherit;
+  }
+  .del-btn-confirm:hover {
+    background: var(--delConfirmBgHover);
+  }
+  .del-btn-cancel {
+    background: var(--delCancelBg);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 11px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    min-width: 110px;
+    font-family: inherit;
+  }
+  .del-btn-cancel:hover {
+    background: var(--delCancelBgHover);
+  }
+  .del-btn-ok {
+    background: var(--delOkBg);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 11px 34px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .del-btn-ok:hover {
+    background: var(--delOkBgHover);
+  }
+
   .footer {
     flex-shrink: 0;
     padding: 14px 24px;
@@ -643,6 +1278,56 @@ select:focus[data-flux-control] {
     .blank-panel {
       min-height: 50vh;
     }
+    .table-inner {
+      min-width: 560px;
+    }
+    .card-head {
+      padding: 14px 16px;
+    }
+    .card-actions {
+      width: 100%;
+    }
+    .btn {
+      flex: 1;
+      justify-content: center;
+    }
+    .download-menu {
+      right: auto;
+      left: 0;
+      width: min(200px, calc(100vw - 60px));
+    }
+    .card-controls {
+      padding: 14px 16px;
+    }
+    .control-group input {
+      width: 100%;
+    }
+    .card-footer {
+      padding: 14px 16px;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .pagination {
+      justify-content: center;
+    }
+    .modal {
+      max-width: 100%;
+      max-height: 100vh;
+      border-radius: 0;
+    }
+    .modal-backdrop {
+      padding: 0;
+    }
+    .modal-body {
+      padding: 16px;
+    }
+    .modal-footer {
+      padding: 14px 16px;
+    }
+    .modal-footer .btn {
+      flex: 1;
+      justify-content: center;
+    }
   }
 
   @media (max-width: 380px) {
@@ -662,6 +1347,15 @@ select:focus[data-flux-control] {
       font-size: 12px;
     }
     .title {
+      font-size: 15px;
+    }
+    .card-actions {
+      flex-direction: column;
+    }
+    .modal-head {
+      padding: 14px 16px;
+    }
+    .modal-title {
       font-size: 15px;
     }
   }
