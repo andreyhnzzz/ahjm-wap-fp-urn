@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Src\IdentityAccess\Role\Presentation\Livewire;
 
 use App\Livewire\Concerns\InteractsWithDataTable;
+use App\Livewire\Concerns\InteractsWithExports;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Src\IdentityAccess\Permission\Application\UseCases\ListPermissionsUseCase;
 use Src\IdentityAccess\Permission\Domain\Entities\Permission;
@@ -20,11 +22,15 @@ use Src\IdentityAccess\Role\Application\UseCases\UpdateRoleUseCase;
 use Src\IdentityAccess\Role\Domain\Entities\Role;
 use Src\IdentityAccess\Role\Domain\Exceptions\RoleIsProtectedException;
 use Src\IdentityAccess\Role\Presentation\Livewire\Forms\RoleForm;
+use Src\Shared\Export\Contracts\ExcelExporterInterface;
+use Src\Shared\Export\Contracts\PdfExporterInterface;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RoleComponent extends Component
 {
     use AuthorizesRequests;
     use InteractsWithDataTable;
+    use InteractsWithExports;
 
     /**
      * Roles are a small, reference-style catalog (typically a handful to
@@ -119,16 +125,30 @@ class RoleComponent extends Component
         $this->dispatch('toast', variant: 'success', text: __('Role deleted.'));
     }
 
-    public function exportPdf(): void
+    public function exportPdf(PdfExporterInterface $exporter, ListRolesUseCase $useCase, ?string $search = null): StreamedResponse
     {
         $this->authorize('exportPdf', Role::class);
-        $this->dispatch('toast', variant: 'info', text: __('Export coming soon.'));
+
+        return $this->streamPdf(
+            __('Roles'),
+            $this->exportHeaders(),
+            $this->exportableRows($useCase, $search),
+            Str::slug(__('Roles')) . '.pdf',
+            $exporter,
+            paperSize: 'letter',
+        );
     }
 
-    public function exportExcel(): void
+    public function exportExcel(ExcelExporterInterface $exporter, ListRolesUseCase $useCase, ?string $search = null): StreamedResponse
     {
         $this->authorize('exportExcel', Role::class);
-        $this->dispatch('toast', variant: 'info', text: __('Export coming soon.'));
+
+        return $this->streamExcel(
+            $this->exportHeaders(),
+            $this->exportableRows($useCase, $search),
+            Str::slug(__('Roles')) . '.xlsx',
+            $exporter,
+        );
     }
 
     public function render(ListRolesUseCase $useCase, ListPermissionsUseCase $permissionsUseCase): View
@@ -213,6 +233,49 @@ class RoleComponent extends Component
     private function freshRows(ListRolesUseCase $useCase): array
     {
         return array_map($this->toRow(...), $useCase->all(sortBy: $this->sortKey, sortDir: $this->sortDir));
+    }
+
+    /**
+     * Rows for exportPdf()/exportExcel() specifically — unlike
+     * freshRows(), this DOES apply a search filter, so a download
+     * reflects what the user is currently looking at instead of always
+     * being the entire table.
+     *
+     * $search is the explicit value the download button passes from
+     * Alpine's live search state in client mode (see
+     * data-table.blade.php — the PHP $this->search property is never
+     * updated in that mode, since client-mode search/sort/pagination
+     * happens entirely in the browser and never round-trips to the
+     * server). In server mode the button passes nothing, and
+     * $this->search is already correct there via wire:model.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function exportableRows(ListRolesUseCase $useCase, ?string $search): array
+    {
+        $effectiveSearch = filled($search) ? $search : ($this->search !== '' ? $this->search : null);
+
+        return array_map(
+            $this->toRow(...),
+            $useCase->all(search: $effectiveSearch, sortBy: $this->sortKey, sortDir: $this->sortDir),
+        );
+    }
+
+    /**
+     * Column definitions for exportExcel()/exportPdf(), consumed by
+     * InteractsWithExports::streamExcel()/streamPdf(). `protected` needs
+     * a `format` callback because the raw boolean toRow() stores for the
+     * on-screen badge isn't what should land in a spreadsheet cell.
+     *
+     * @return array<int, array{key: string, label: string, format?: callable}>
+     */
+    private function exportHeaders(): array
+    {
+        return [
+            ['key' => 'name', 'label' => __('Name')],
+            ['key' => 'permissionsCount', 'label' => __('Permissions')],
+            ['key' => 'protected', 'label' => __('Type'), 'format' => fn(bool $protected): string => $protected ? __('System') : __('Custom')],
+        ];
     }
 
     /**

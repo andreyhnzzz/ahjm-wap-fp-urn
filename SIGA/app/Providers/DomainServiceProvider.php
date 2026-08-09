@@ -19,6 +19,10 @@ final class DomainServiceProvider extends ServiceProvider
         => \Src\IdentityAccess\Role\Infrastructure\Persistence\Repositories\EloquentRoleRepository::class,
         \Src\IdentityAccess\Permission\Domain\Contracts\PermissionRepositoryInterface::class
         => \Src\IdentityAccess\Permission\Infrastructure\Persistence\Repositories\EloquentPermissionRepository::class,
+        \Src\Shared\Export\Contracts\ExcelExporterInterface::class
+        => \Src\Shared\Export\Infrastructure\SpatieExcelExporter::class,
+        \Src\Shared\Export\Contracts\PdfExporterInterface::class
+        => \Src\Shared\Export\Infrastructure\SpatiePdfExporter::class,
     ];
 
     /**

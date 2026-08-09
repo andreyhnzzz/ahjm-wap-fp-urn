@@ -16,13 +16,10 @@ interface RoleRepositoryInterface
     public function find(int $id): ?Role;
 
     /**
-     * Full, unpaginated collection — backs client-side (Alpine) tables
-     * that resolve search/sort/pagination in the browser. Reserved for
-     * datasets small enough to ship to the client in one response.
      *
      * @return array<int, Role>
      */
-    public function all(?string $sortBy = null, string $sortDir = 'asc'): array;
+    public function all(?string $search = null, ?string $sortBy = null, string $sortDir = 'asc'): array;
 
     /**
      * @return array{items: array<int, Role>, total: int}

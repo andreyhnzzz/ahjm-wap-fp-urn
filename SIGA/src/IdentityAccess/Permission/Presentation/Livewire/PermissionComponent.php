@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Src\IdentityAccess\Permission\Presentation\Livewire;
 
 use App\Livewire\Concerns\InteractsWithDataTable;
+use App\Livewire\Concerns\InteractsWithExports;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Src\IdentityAccess\Permission\Application\UseCases\CreatePermissionUseCase;
 use Src\IdentityAccess\Permission\Application\UseCases\DeletePermissionUseCase;
@@ -16,11 +18,15 @@ use Src\IdentityAccess\Permission\Application\UseCases\ListPermissionsUseCase;
 use Src\IdentityAccess\Permission\Application\UseCases\UpdatePermissionUseCase;
 use Src\IdentityAccess\Permission\Domain\Entities\Permission;
 use Src\IdentityAccess\Permission\Presentation\Livewire\Forms\PermissionForm;
+use Src\Shared\Export\Contracts\ExcelExporterInterface;
+use Src\Shared\Export\Contracts\PdfExporterInterface;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PermissionComponent extends Component
 {
     use AuthorizesRequests;
     use InteractsWithDataTable;
+    use InteractsWithExports;
 
     /**
      * Permissions are `modules x actions` — a small, reference-style
@@ -96,16 +102,30 @@ class PermissionComponent extends Component
         $this->dispatch('toast', variant: 'success', text: __('Permission deleted.'));
     }
 
-    public function exportPdf(): void
+    public function exportPdf(PdfExporterInterface $exporter, ListPermissionsUseCase $useCase, ?string $search = null): StreamedResponse
     {
         $this->authorize('exportPdf', Permission::class);
-        $this->dispatch('toast', variant: 'info', text: __('Export coming soon.'));
+
+        return $this->streamPdf(
+            __('Permissions'),
+            $this->exportHeaders(),
+            $this->exportableRows($useCase, $search),
+            Str::slug(__('Permissions')) . '.pdf',
+            $exporter,
+            paperSize: 'letter',
+        );
     }
 
-    public function exportExcel(): void
+    public function exportExcel(ExcelExporterInterface $exporter, ListPermissionsUseCase $useCase, ?string $search = null): StreamedResponse
     {
         $this->authorize('exportExcel', Permission::class);
-        $this->dispatch('toast', variant: 'info', text: __('Export coming soon.'));
+
+        return $this->streamExcel(
+            $this->exportHeaders(),
+            $this->exportableRows($useCase, $search),
+            Str::slug(__('Permissions')) . '.xlsx',
+            $exporter,
+        );
     }
 
     public function render(ListPermissionsUseCase $useCase): View
@@ -172,5 +192,40 @@ class PermissionComponent extends Component
     private function freshRows(ListPermissionsUseCase $useCase): array
     {
         return array_map($this->toRow(...), $useCase->all(sortBy: $this->sortKey, sortDir: $this->sortDir));
+    }
+
+    /**
+     * Rows for exportPdf()/exportExcel() specifically — unlike
+     * freshRows(), this DOES apply a search filter, so a download
+     * reflects what the user is currently looking at instead of always
+     * being the entire table. See RoleComponent::exportableRows() for
+     * the full reasoning — identical pattern here.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function exportableRows(ListPermissionsUseCase $useCase, ?string $search): array
+    {
+        $effectiveSearch = filled($search) ? $search : ($this->search !== '' ? $this->search : null);
+
+        return array_map(
+            $this->toRow(...),
+            $useCase->all(search: $effectiveSearch, sortBy: $this->sortKey, sortDir: $this->sortDir),
+        );
+    }
+
+    /**
+     * No `format` callbacks needed here — module/action/name are already
+     * plain display strings. Same InteractsWithExports mechanism as
+     * RoleComponent, zero changes to the trait itself.
+     *
+     * @return array<int, array{key: string, label: string}>
+     */
+    private function exportHeaders(): array
+    {
+        return [
+            ['key' => 'module', 'label' => __('Module')],
+            ['key' => 'action', 'label' => __('Action')],
+            ['key' => 'name', 'label' => __('Name')],
+        ];
     }
 }

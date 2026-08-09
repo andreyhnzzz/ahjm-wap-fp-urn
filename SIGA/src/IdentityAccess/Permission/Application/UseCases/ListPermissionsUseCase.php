@@ -18,11 +18,15 @@ final class ListPermissionsUseCase
      * that resolve search/sort/pagination in the browser without any
      * further round-trip to the server. Intended for small catalogs.
      *
+     * $search: see PermissionRepositoryInterface::all() — lets
+     * exportPdf()/exportExcel() honor whatever's currently in the
+     * search box.
+     *
      * @return array<int, Permission>
      */
-    public function all(?string $sortBy = null, string $sortDir = 'asc'): array
+    public function all(?string $search = null, ?string $sortBy = null, string $sortDir = 'asc'): array
     {
-        return $this->repository->all($sortBy, $sortDir);
+        return $this->repository->all($search, $sortBy, $sortDir);
     }
 
     /**

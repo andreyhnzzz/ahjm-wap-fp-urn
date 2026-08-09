@@ -52,6 +52,7 @@ if ($lastPage <= 7) {
 
         <div class="card"
             @if ($isClient)
+            wire:key="crud-table-{{ $tableVersion ?? 0 }}"
             x-data="crudTable({
         rows: @js($rows),
         searchable: @js($searchable),
@@ -84,7 +85,28 @@ if ($lastPage <= 7) {
                             <span>{{ __('Download') }}</span>
                         </button>
                         <div class="download-menu" :class="{ 'open': open }">
-                            <button type="button" class="download-item" wire:click="exportPdf" x-on:click="open = false">
+                            {{--
+                        Client mode passes Alpine's live `search` value as
+                        a plain positional argument — NOT wrapped as
+                        `{ search: search }`. Livewire evaluates that JS
+                        object literally and hands it to PHP as a single
+                        array argument rather than unpacking it into a
+                        named parameter, which is what actually broke
+                        here the first time (search arrived as an array,
+                        not a string). A bare value works because Livewire
+                        already skips $exporter/$useCase (both container-
+                        resolvable) and fills the one remaining
+                        unresolved parameter, $search, by position —
+                        same proven pattern openEditModal(row.id) already
+                        uses elsewhere in this file. The PHP $search
+                        property is never updated in client mode (that
+                        input binds to Alpine's `search`, not wire:model,
+                        by design — see the control-group above). Server
+                        mode passes nothing; $this->search there is
+                        already live via wire:model, no explicit value
+                        needed.
+                    --}}
+                            <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportPdf(search)' : 'exportPdf' }}" x-on:click="open = false">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-red-600" style="color:#DC2626">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                                     <polyline points="14 2 14 8 20 8" />
@@ -95,7 +117,7 @@ if ($lastPage <= 7) {
                                 <span>{{ __('Export to PDF') }}</span>
                             </button>
                             <div class="download-divider"></div>
-                            <button type="button" class="download-item" wire:click="exportExcel" x-on:click="open = false">
+                            <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportExcel(search)' : 'exportExcel' }}" x-on:click="open = false">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#16A34A">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                                     <polyline points="14 2 14 8 20 8" />

@@ -17,7 +17,7 @@ interface PermissionRepositoryInterface
      *
      * @return array<int, Permission>
      */
-    public function all(?string $sortBy = null, string $sortDir = 'asc'): array;
+    public function all(?string $search = null, ?string $sortBy = null, string $sortDir = 'asc'): array;
 
     /**
      * @return array{items: array<int, Permission>, total: int}

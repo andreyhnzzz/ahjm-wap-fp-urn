@@ -20,18 +20,26 @@ final class EloquentPermissionRepository implements PermissionRepositoryInterfac
         return $model ? $this->toDomain($model) : null;
     }
 
-    public function all(?string $sortBy = null, string $sortDir = 'asc'): array
+    public function all(?string $search = null, ?string $sortBy = null, string $sortDir = 'asc'): array
     {
+        $query = PermissionModel::query();
+
+        if (filled($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('action', 'like', "%{$search}%");
+            });
+        }
+
         $column = in_array($sortBy, self::SORTABLE_COLUMNS, true) ? $sortBy : 'module';
         $direction = $sortDir === 'desc' ? 'desc' : 'asc';
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, PermissionModel> $models */
-        $models = PermissionModel::query()
+        return $query
             ->orderBy($column, $direction)
             ->orderBy('action')
-            ->get();
-
-        return $models->map($this->toDomain(...))->all();
+            ->get()
+            ->map($this->toDomain(...))
+            ->all();
     }
 
     public function paginate(?string $search, ?string $module, int $perPage, int $page, ?string $sortBy = null, string $sortDir = 'asc'): array
