@@ -27,7 +27,9 @@
         :per-page="$perPage"
         table-cols="1fr 1.3fr 1.6fr 1fr"
         :can-create="Auth::user()->can('create', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
-        :can-export="Auth::user()->can('exportPdf', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class) || Auth::user()->can('exportExcel', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
+        :can-search="Auth::user()->can('search', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
+        :can-export-pdf="Auth::user()->can('exportPdf', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
+        :can-export-excel="Auth::user()->can('exportExcel', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
         :title="__('Permissions management')">
 
         @if ($tableMode === 'client')

@@ -2,8 +2,9 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
+use App\Models\Permission;
 use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -20,15 +21,26 @@ class DatabaseSeeder extends Seeder
             PermissionSeeder::class,
             RoleSeeder::class,
         ]);
-        /** @var \App\Models\User $user */
-        $user = User::factory()->create([
+
+        $superadminUser = User::factory()->create([
             'name' => 'prueba ISW-521',
             'email' => 'prueba@gmail.com',
             'password' => bcrypt('12345678'),
         ]);
 
-        $user->roles()->sync(
+        $superadminUser->roles()->sync(
             Role::query()->where('name', 'Superadmin')->pluck('id')
         );
+
+        $adminRole = Role::query()->where('name', 'Admin')->firstOrFail();
+        $adminRole->permissions()->sync(Permission::query()->pluck('id'));
+
+        $adminUser = User::factory()->create([
+            'name' => 'admin prueba ISW-521',
+            'email' => 'admin@gmail.com',
+            'password' => bcrypt('12345678'),
+        ]);
+
+        $adminUser->roles()->sync([$adminRole->id]);
     }
 }

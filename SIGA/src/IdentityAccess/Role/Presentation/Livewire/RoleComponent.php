@@ -9,6 +9,7 @@ use App\Livewire\Concerns\InteractsWithExports;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Src\IdentityAccess\Permission\Application\UseCases\ListPermissionsUseCase;
@@ -69,9 +70,8 @@ class RoleComponent extends Component
 
     public function openEditModal(int $id, FindRoleUseCase $useCase): void
     {
-        $this->authorize('update', Role::class);
-
         $role = $useCase->handle($id);
+        $this->authorize('update', $role);
 
         $this->editingId = $id;
         $this->form->fromEntity($role);
@@ -84,7 +84,7 @@ class RoleComponent extends Component
         $this->showModal = false;
     }
 
-    public function save(CreateRoleUseCase $createUseCase, UpdateRoleUseCase $updateUseCase, ListRolesUseCase $listUseCase): void
+    public function save(CreateRoleUseCase $createUseCase, UpdateRoleUseCase $updateUseCase, ListRolesUseCase $listUseCase, FindRoleUseCase $findUseCase): void
     {
         $this->form->validate();
 
@@ -93,7 +93,13 @@ class RoleComponent extends Component
                 $this->authorize('create', Role::class);
                 $createUseCase->handle($this->form->toDto());
             } else {
-                $this->authorize('update', Role::class);
+                // RolePolicy::update() needs an actual Role instance as
+                // its 2nd parameter (it checks per-row rules, not just
+                // "can this user edit roles in general") — Role::class
+                // alone isn't enough for Laravel to call it, hence
+                // fetching the entity first instead of authorizing
+                // against the bare class string.
+                $this->authorize('update', $findUseCase->handle($this->editingId));
                 $updateUseCase->handle($this->editingId, $this->form->toDto());
             }
         } catch (RoleIsProtectedException $e) {
@@ -109,9 +115,11 @@ class RoleComponent extends Component
             : __('Role updated.'));
     }
 
-    public function delete(int $id, DeleteRoleUseCase $useCase, ListRolesUseCase $listUseCase): void
+    public function delete(int $id, DeleteRoleUseCase $useCase, ListRolesUseCase $listUseCase, FindRoleUseCase $findUseCase): void
     {
-        $this->authorize('delete', Role::class);
+        // Same reasoning as save()'s update branch: RolePolicy::delete()
+        // requires an actual Role instance, not the class string.
+        $this->authorize('delete', $findUseCase->handle($id));
 
         try {
             $useCase->handle($id);
@@ -186,7 +194,7 @@ class RoleComponent extends Component
     private function renderServerMode(ListRolesUseCase $useCase): View
     {
         $result = $useCase->paginate(
-            search: $this->search !== '' ? $this->search : null,
+            search: $this->authorizedSearch(),
             perPage: $this->perPage,
             page: $this->page,
             sortBy: $this->sortKey,
@@ -236,36 +244,30 @@ class RoleComponent extends Component
     }
 
     /**
-     * Rows for exportPdf()/exportExcel() specifically — unlike
-     * freshRows(), this DOES apply a search filter, so a download
-     * reflects what the user is currently looking at instead of always
-     * being the entire table.
-     *
-     * $search is the explicit value the download button passes from
-     * Alpine's live search state in client mode (see
-     * data-table.blade.php — the PHP $this->search property is never
-     * updated in that mode, since client-mode search/sort/pagination
-     * happens entirely in the browser and never round-trips to the
-     * server). In server mode the button passes nothing, and
-     * $this->search is already correct there via wire:model.
      *
      * @return array<int, array<string, mixed>>
      */
     private function exportableRows(ListRolesUseCase $useCase, ?string $search): array
     {
-        $effectiveSearch = filled($search) ? $search : ($this->search !== '' ? $this->search : null);
-
         return array_map(
             $this->toRow(...),
-            $useCase->all(search: $effectiveSearch, sortBy: $this->sortKey, sortDir: $this->sortDir),
+            $useCase->all(search: $this->authorizedSearch($search), sortBy: $this->sortKey, sortDir: $this->sortDir),
         );
     }
 
+
+    private function authorizedSearch(?string $explicit = null): ?string
+    {
+        if (! Auth::user()->can('search', Role::class)) {
+            return null;
+        }
+
+        $candidate = filled($explicit) ? $explicit : $this->search;
+
+        return $candidate !== '' ? $candidate : null;
+    }
+
     /**
-     * Column definitions for exportExcel()/exportPdf(), consumed by
-     * InteractsWithExports::streamExcel()/streamPdf(). `protected` needs
-     * a `format` callback because the raw boolean toRow() stores for the
-     * on-screen badge isn't what should land in a spreadsheet cell.
      *
      * @return array<int, array{key: string, label: string, format?: callable}>
      */
@@ -279,13 +281,6 @@ class RoleComponent extends Component
     }
 
     /**
-     * Read-only catalog for the permissions checklist inside the modal.
-     * Cross-context read (Role → Permission) kept deliberately thin: a
-     * plain array projection, never a Domain Entity or Eloquent Model
-     * leaking across the boundary. Both modules live under the same
-     * IdentityAccess bounded context, so this pragmatic coupling is
-     * acceptable without a dedicated anti-corruption layer.
-     *
      * @return array<int, array{name: string, label: string}>
      */
     private function permissionCatalog(ListPermissionsUseCase $useCase): array

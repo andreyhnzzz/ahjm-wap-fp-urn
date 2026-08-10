@@ -9,6 +9,7 @@ use App\Livewire\Concerns\InteractsWithExports;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Src\IdentityAccess\Permission\Application\UseCases\CreatePermissionUseCase;
@@ -58,9 +59,8 @@ class PermissionComponent extends Component
 
     public function openEditModal(int $id, FindPermissionUseCase $useCase): void
     {
-        $this->authorize('update', Permission::class);
-
         $permission = $useCase->handle($id);
+        $this->authorize('update', $permission);
 
         $this->editingId = $id;
         $this->form->fromEntity($permission);
@@ -73,7 +73,7 @@ class PermissionComponent extends Component
         $this->showModal = false;
     }
 
-    public function save(CreatePermissionUseCase $createUseCase, UpdatePermissionUseCase $updateUseCase, ListPermissionsUseCase $listUseCase): void
+    public function save(CreatePermissionUseCase $createUseCase, UpdatePermissionUseCase $updateUseCase, ListPermissionsUseCase $listUseCase, FindPermissionUseCase $findUseCase): void
     {
         $this->form->validate();
 
@@ -81,7 +81,11 @@ class PermissionComponent extends Component
             $this->authorize('create', Permission::class);
             $createUseCase->handle($this->form->toDto());
         } else {
-            $this->authorize('update', Permission::class);
+            // PermissionPolicy::update() needs an actual Permission
+            // instance as its 2nd parameter, same reasoning as
+            // RoleComponent::save() — Permission::class alone isn't
+            // enough for Laravel to call it.
+            $this->authorize('update', $findUseCase->handle($this->editingId));
             $updateUseCase->handle($this->editingId, $this->form->toDto());
         }
 
@@ -92,9 +96,11 @@ class PermissionComponent extends Component
             : __('Permission updated.'));
     }
 
-    public function delete(int $id, DeletePermissionUseCase $useCase, ListPermissionsUseCase $listUseCase): void
+    public function delete(int $id, DeletePermissionUseCase $useCase, ListPermissionsUseCase $listUseCase, FindPermissionUseCase $findUseCase): void
     {
-        $this->authorize('delete', Permission::class);
+        // Same reasoning as save()'s update branch: PermissionPolicy::delete()
+        // requires an actual Permission instance, not the class string.
+        $this->authorize('delete', $findUseCase->handle($id));
 
         $useCase->handle($id);
 
@@ -152,7 +158,7 @@ class PermissionComponent extends Component
     private function renderServerMode(ListPermissionsUseCase $useCase): View
     {
         $result = $useCase->paginate(
-            search: $this->search !== '' ? $this->search : null,
+            search: $this->authorizedSearch(),
             module: null,
             perPage: $this->perPage,
             page: $this->page,
@@ -195,29 +201,28 @@ class PermissionComponent extends Component
     }
 
     /**
-     * Rows for exportPdf()/exportExcel() specifically — unlike
-     * freshRows(), this DOES apply a search filter, so a download
-     * reflects what the user is currently looking at instead of always
-     * being the entire table. See RoleComponent::exportableRows() for
-     * the full reasoning — identical pattern here.
-     *
      * @return array<int, array<string, mixed>>
      */
     private function exportableRows(ListPermissionsUseCase $useCase, ?string $search): array
     {
-        $effectiveSearch = filled($search) ? $search : ($this->search !== '' ? $this->search : null);
-
         return array_map(
             $this->toRow(...),
-            $useCase->all(search: $effectiveSearch, sortBy: $this->sortKey, sortDir: $this->sortDir),
+            $useCase->all(search: $this->authorizedSearch($search), sortBy: $this->sortKey, sortDir: $this->sortDir),
         );
     }
 
+    private function authorizedSearch(?string $explicit = null): ?string
+    {
+        if (! Auth::user()->can('search', Permission::class)) {
+            return null;
+        }
+
+        $candidate = filled($explicit) ? $explicit : $this->search;
+
+        return $candidate !== '' ? $candidate : null;
+    }
+
     /**
-     * No `format` callbacks needed here — module/action/name are already
-     * plain display strings. Same InteractsWithExports mechanism as
-     * RoleComponent, zero changes to the trait itself.
-     *
      * @return array<int, array{key: string, label: string}>
      */
     private function exportHeaders(): array

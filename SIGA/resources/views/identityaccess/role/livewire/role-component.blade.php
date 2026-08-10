@@ -27,7 +27,9 @@
         :per-page="$perPage"
         table-cols="2.2fr 1.2fr 1fr 1fr"
         :can-create="Auth::user()->can('create', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
-        :can-export="Auth::user()->can('exportPdf', \Src\IdentityAccess\Role\Domain\Entities\Role::class) || Auth::user()->can('exportExcel', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
+        :can-search="Auth::user()->can('search', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
+        :can-export-pdf="Auth::user()->can('exportPdf', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
+        :can-export-excel="Auth::user()->can('exportExcel', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
         :title="__('Roles management')">
 
         @if ($tableMode === 'client')

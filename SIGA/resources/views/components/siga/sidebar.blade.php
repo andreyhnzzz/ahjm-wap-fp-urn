@@ -29,6 +29,8 @@
         <div class="nav-group">
             <span class="nav-label" data-labels>{{ __('SYSTEM ADMINISTRATION') }}</span>
 
+
+            @can('viewAny', \Src\IdentityAccess\Role\Domain\Entities\Role::class)
             <a href="{{ route('identityaccess.role.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -39,7 +41,9 @@
                     <polyline points="9 6 15 12 9 18"></polyline>
                 </svg>
             </a>
+            @endcan
 
+            @can('viewAny', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)
             <a href="{{ route('identityaccess.permission.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="11" width="18" height="10" rx="2"></rect>
@@ -50,6 +54,7 @@
                     <polyline points="9 6 15 12 9 18"></polyline>
                 </svg>
             </a>
+            @endcan
         </div>
 
         <div class="nav-group">

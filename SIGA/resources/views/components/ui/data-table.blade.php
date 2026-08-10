@@ -8,11 +8,18 @@
 'sortDir' => 'asc',
 'perPage' => 10,
 'canCreate' => false,
-'canExport' => false,
+'canSearch' => true,
+'canExportPdf' => false,
+'canExportExcel' => false,
 'title' => '',
 'tableCols' => '1fr',
 'createAction' => "\$wire.openCreateModal()",
 ])
+
+@php
+$isClient = $mode === 'client';
+$canExport = $canExportPdf || $canExportExcel;
+@endphp
 
 {{--
     Full-width by design (.card has `width: 100%` in app.css) — this
@@ -24,11 +31,18 @@
     screen. The outer <div> in those views only exists because Livewire
     full-page components require a single root element — it carries no
     width constraint itself.
+
+    Permission props (canCreate/canSearch/canExportPdf/canExportExcel):
+    always pass these from Auth::user()->can(...) / hasPermissionTo(...)
+    in the consuming view — never hardcode true here. Each one hides
+    its UI element AND the underlying Livewire action is independently
+    authorize()'d server-side (openCreateModal/save/delete/exportPdf/
+    exportExcel all call $this->authorize(...) themselves) — so a
+    prop passed wrong only hides/shows a button, it never grants real
+    access on its own.
 --}}
 
 @php
-$isClient = $mode === 'client';
-
 if (! $isClient) {
 $total = $paginator?->total() ?? 0;
 $perPage = $paginator?->perPage() ?? $perPage;
@@ -106,6 +120,7 @@ if ($lastPage <= 7) {
                         already live via wire:model, no explicit value
                         needed.
                     --}}
+                            @if ($canExportPdf)
                             <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportPdf(search)' : 'exportPdf' }}" x-on:click="open = false">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-red-600" style="color:#DC2626">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -116,7 +131,11 @@ if ($lastPage <= 7) {
                                 </svg>
                                 <span>{{ __('Export to PDF') }}</span>
                             </button>
+                            @endif
+                            @if ($canExportPdf && $canExportExcel)
                             <div class="download-divider"></div>
+                            @endif
+                            @if ($canExportExcel)
                             <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportExcel(search)' : 'exportExcel' }}" x-on:click="open = false">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#16A34A">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -125,6 +144,7 @@ if ($lastPage <= 7) {
                                 </svg>
                                 <span>{{ __('Export to Excel') }}</span>
                             </button>
+                            @endif
                         </div>
                     </div>
                     @endif
@@ -149,6 +169,7 @@ if ($lastPage <= 7) {
                     @endif
                     <span>{{ __('Records') }}</span>
                 </div>
+                @if ($canSearch)
                 <div class="control-group">
                     <span>{{ __('Search') }}:</span>
                     @if ($isClient)
@@ -157,6 +178,7 @@ if ($lastPage <= 7) {
                     <input type="text" wire:model.live.debounce.400ms="search">
                     @endif
                 </div>
+                @endif
             </div>
 
             <div class="table-scroll"
