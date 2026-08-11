@@ -1359,4 +1359,420 @@ select:focus[data-flux-control] {
       font-size: 15px;
     }
   }
+
+  /* ---------------------------------------------------------------
+     Academic offer analytics — Reports (RE-01/RE-02) and Risk board
+     (RE-04).
+
+     Every colour below is a theme token defined for both palettes right
+     here, never an inline hex in a Blade file: the risk board is a
+     screen a coordinator leaves open all day, and a badge that turns
+     unreadable the moment they switch to dark mode is a real defect,
+     not a cosmetic one.
+     --------------------------------------------------------------- */
+  :root {
+    --riskHighBg: #fdecec;
+    --riskHighText: #b42318;
+    --riskHighBorder: #f3bdb8;
+    --riskMediumBg: #fff4de;
+    --riskMediumText: #93650b;
+    --riskMediumBorder: #ecd39a;
+    --riskLowBg: #e8f0fb;
+    --riskLowText: #1c4e8f;
+    --riskLowBorder: #bcd2ee;
+    --riskTotalBg: #eef1f6;
+    --riskTotalText: #33415c;
+    --riskTotalBorder: #d8dee9;
+    --statusOpenBg: #e6f0e2;
+    --statusOpenText: #3d7a30;
+    --statusClosedBg: #e2e8f2;
+    --statusClosedText: #1a3868;
+    --statusCancelledBg: #f2e3e3;
+    --statusCancelledText: #9a2b23;
+    --unassignedText: #b42318;
+    --liveDot: #22a06b;
+  }
+
+  [data-theme="dark"] {
+    --riskHighBg: #3a1620;
+    --riskHighText: #ff9b9b;
+    --riskHighBorder: #6a2b31;
+    --riskMediumBg: #3a2c0e;
+    --riskMediumText: #f2c063;
+    --riskMediumBorder: #6a5320;
+    --riskLowBg: #16294a;
+    --riskLowText: #9dc0f5;
+    --riskLowBorder: #2c4272;
+    --riskTotalBg: #14203c;
+    --riskTotalText: #c3d1ec;
+    --riskTotalBorder: #2e4470;
+    --statusOpenBg: #16321f;
+    --statusOpenText: #7fd28f;
+    --statusClosedBg: #1c2c4d;
+    --statusClosedText: #a9c0ec;
+    --statusCancelledBg: #3a1c1c;
+    --statusCancelledText: #f0a3a3;
+    --unassignedText: #ff9b9b;
+    --liveDot: #4ade80;
+  }
+
+  /* --- shared table cells ------------------------------------------ */
+  .data-row > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .cell-strong {
+    font-weight: 700;
+    color: var(--textPrimary);
+  }
+  .cell-unassigned {
+    color: var(--unassignedText);
+    font-style: italic;
+  }
+  .metric-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  /* --- group status badges ----------------------------------------- */
+  .status-badge.open {
+    background: var(--statusOpenBg);
+    color: var(--statusOpenText);
+  }
+  .status-badge.closed {
+    background: var(--statusClosedBg);
+    color: var(--statusClosedText);
+  }
+  .status-badge.cancelled {
+    background: var(--statusCancelledBg);
+    color: var(--statusCancelledText);
+  }
+
+  /* --- form controls added by the academic modules ------------------ */
+  .form-field input[type="number"],
+  .form-field select {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--cardBg);
+    color: var(--textPrimary);
+    font-size: 13.5px;
+    font-family: inherit;
+    width: 100%;
+  }
+  .form-field input[type="number"]:focus,
+  .form-field select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(11, 60, 140, 0.12);
+  }
+  .form-field input[type="number"]:disabled {
+    background: var(--tableHeadBg);
+    color: var(--textMuted);
+    cursor: not-allowed;
+  }
+  .form-field input[type="number"].has-error,
+  .form-field select.has-error {
+    border-color: var(--logout);
+  }
+  .field-hint {
+    font-size: 12px;
+    color: var(--textMuted);
+  }
+  /* auto-fit rather than a fixed column count: the same grid degrades to
+     a single column inside the full-screen mobile modal with no media
+     query of its own. */
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 18px;
+  }
+  .modal-wide {
+    max-width: 760px;
+  }
+
+  /* --- live indicator ---------------------------------------------- */
+  .live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: var(--tableHeadBg);
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--textSecondary);
+  }
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--liveDot);
+    animation: livePulse 2s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-dot {
+      animation: none;
+    }
+  }
+
+  /* --- metric strips (risk board + reports) ------------------------- */
+  .risk-summary,
+  .report-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .risk-metric,
+  .report-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--tableHeadBg);
+  }
+  .risk-metric-count,
+  .report-metric-count {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--textPrimary);
+  }
+  .risk-metric-label,
+  .report-metric-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: var(--textMuted);
+  }
+  .risk-metric.risk-high {
+    background: var(--riskHighBg);
+    border-color: var(--riskHighBorder);
+  }
+  .risk-metric.risk-high .risk-metric-count,
+  .risk-metric.risk-high .risk-metric-label {
+    color: var(--riskHighText);
+  }
+  .risk-metric.risk-medium {
+    background: var(--riskMediumBg);
+    border-color: var(--riskMediumBorder);
+  }
+  .risk-metric.risk-medium .risk-metric-count,
+  .risk-metric.risk-medium .risk-metric-label {
+    color: var(--riskMediumText);
+  }
+  .risk-metric.risk-low {
+    background: var(--riskLowBg);
+    border-color: var(--riskLowBorder);
+  }
+  .risk-metric.risk-low .risk-metric-count,
+  .risk-metric.risk-low .risk-metric-label {
+    color: var(--riskLowText);
+  }
+  .risk-metric.risk-total {
+    background: var(--riskTotalBg);
+    border-color: var(--riskTotalBorder);
+  }
+  .report-metric-alert {
+    background: var(--riskHighBg);
+    border-color: var(--riskHighBorder);
+  }
+  .report-metric-alert .report-metric-count,
+  .report-metric-alert .report-metric-label {
+    color: var(--riskHighText);
+  }
+
+  /* --- risk board columns ------------------------------------------ */
+  .risk-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    padding: 20px;
+  }
+  .risk-column {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--cardBg);
+  }
+  .risk-column-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .risk-column-head.risk-high {
+    background: var(--riskHighBg);
+    color: var(--riskHighText);
+  }
+  .risk-column-head.risk-medium {
+    background: var(--riskMediumBg);
+    color: var(--riskMediumText);
+  }
+  .risk-column-head.risk-low {
+    background: var(--riskLowBg);
+    color: var(--riskLowText);
+  }
+  .risk-column-count {
+    font-variant-numeric: tabular-nums;
+  }
+  .risk-column-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    /* Capped so one very noisy level cannot push the other two columns
+       off the fold; each column scrolls on its own instead. Sized to fit
+       a realistic board (four or so items) without scrolling at all. */
+    max-height: 640px;
+    overflow-y: auto;
+  }
+  .risk-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    background: var(--tableHeadBg);
+  }
+  .risk-item.risk-high {
+    border-left-color: var(--riskHighText);
+  }
+  .risk-item.risk-medium {
+    border-left-color: var(--riskMediumText);
+  }
+  .risk-item.risk-low {
+    border-left-color: var(--riskLowText);
+  }
+  .risk-item-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--textPrimary);
+  }
+  .risk-item-subject {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--textSecondary);
+  }
+  .risk-item-text {
+    font-size: 12.5px;
+    color: var(--textMuted);
+    overflow-wrap: anywhere;
+  }
+  .risk-item-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--primary);
+    text-decoration: none;
+    width: fit-content;
+  }
+  .risk-item-link:hover {
+    text-decoration: underline;
+  }
+  .risk-empty {
+    padding: 26px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--textMuted);
+  }
+
+  /* --- teacher load report ----------------------------------------- */
+  .load-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .load-identity {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .load-name {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--textPrimary);
+  }
+  .load-meta {
+    font-size: 12.5px;
+    color: var(--textMuted);
+  }
+  .workload-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 16px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+  .workload-badge.over {
+    background: var(--riskHighBg);
+    color: var(--riskHighText);
+    border-color: var(--riskHighBorder);
+  }
+  .workload-badge.under {
+    background: var(--riskMediumBg);
+    color: var(--riskMediumText);
+    border-color: var(--riskMediumBorder);
+  }
+  .workload-badge.balanced {
+    background: var(--statusOpenBg);
+    color: var(--statusOpenText);
+    border-color: var(--statusOpenBg);
+  }
+  .load-legend {
+    font-weight: 700;
+    color: var(--textSecondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-size: 11.5px;
+  }
+  .report-status {
+    justify-content: flex-end;
+  }
+
+  @media (max-width: 760px) {
+    .risk-summary,
+    .report-summary {
+      padding: 14px 16px;
+    }
+    .risk-columns {
+      padding: 14px 16px;
+    }
+    .load-header {
+      padding: 14px 16px;
+    }
+  }
 }

@@ -71,7 +71,17 @@
                 </svg>
             </a>
 
-            <a href="#" @click.prevent="setSection('docentes')" class="nav-item">
+            {{--
+                Real modules from here down. They follow the Roles/Permisos
+                pattern exactly — wire:navigate + wire:current="active" —
+                and never the placeholder pattern above: inside the
+                x-persist="sidebar" element, a server-side
+                request()->routeIs() would be evaluated once and frozen,
+                whereas wire:current is resolved in the browser against the
+                real URL on every navigation.
+            --}}
+            @can('viewAny', \Src\Academic\Teacher\Domain\Entities\Teacher::class)
+            <a href="{{ route('academic.teacher.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
                     <circle cx="10" cy="7" r="4"></circle>
@@ -83,8 +93,10 @@
                     <polyline points="9 6 15 12 9 18"></polyline>
                 </svg>
             </a>
+            @endcan
 
-            <a href="#" @click.prevent="setSection('aulas')" class="nav-item">
+            @can('viewAny', \Src\Academic\Classroom\Domain\Entities\Classroom::class)
+            <a href="{{ route('academic.classroom.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="4" y="2" width="16" height="20" rx="1"></rect>
                     <line x1="9" y1="7" x2="9" y2="7.01"></line>
@@ -101,40 +113,28 @@
                     <polyline points="9 6 15 12 9 18"></polyline>
                 </svg>
             </a>
+            @endcan
 
-            <div x-data="{ open: true }" x-on:livewire:navigated.window="open = false">
-                <div class="nav-item nav-parent" @click="open = !open; setSection('grupos', currentSub || 'activos')">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                        <polyline points="2 17 12 22 22 17"></polyline>
-                        <polyline points="2 12 12 17 22 12"></polyline>
-                    </svg>
-                    <span class="nav-text" data-labels>{{ __('Groups') }}</span>
-                    <svg class="nav-chevron chevron-toggle" :class="{ 'open': open }" data-labels width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                </div>
-                <div class="nav-children" :class="{ 'open': open }" data-labels>
-                    <a href="#" class="nav-child" @click.prevent="setSection('grupos', 'activos')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <polyline points="9 6 15 12 9 18"></polyline>
-                        </svg>
-                        <span>{{ __('Active Groups') }}</span>
-                    </a>
-                    <a href="#" class="nav-child" @click.prevent="setSection('grupos', 'historial')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <polyline points="9 6 15 12 9 18"></polyline>
-                        </svg>
-                        <span>{{ __('Group History') }}</span>
-                    </a>
-                </div>
-            </div>
+            @can('viewAny', \Src\Academic\Group\Domain\Entities\Group::class)
+            <a href="{{ route('academic.group.index') }}" wire:navigate wire:current="active" class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                    <polyline points="2 17 12 22 22 17"></polyline>
+                    <polyline points="2 12 12 17 22 12"></polyline>
+                </svg>
+                <span class="nav-text" data-labels>{{ __('Groups') }}</span>
+                <svg class="nav-chevron" data-labels width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6;">
+                    <polyline points="9 6 15 12 9 18"></polyline>
+                </svg>
+            </a>
+            @endcan
         </div>
 
         <div class="nav-group">
             <span class="nav-label" data-labels>{{ __('TRACKING') }}</span>
 
-            <a href="#" @click.prevent="setSection('riesgos')" class="nav-item">
+            @can('viewAny', \Src\AcademicRisk\RiskBoard\Domain\Entities\RiskBoard::class)
+            <a href="{{ route('academicrisk.riskboard.index') }}" wire:navigate wire:current="active" class="nav-item">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M12 3 2 20h20L12 3z"></path>
                     <line x1="12" y1="9.5" x2="12" y2="14"></line>
@@ -145,9 +145,20 @@
                     <polyline points="9 6 15 12 9 18"></polyline>
                 </svg>
             </a>
+            @endcan
 
+            @canany([
+                ['viewAny', \Src\Reporting\OfferReport\Domain\Entities\OfferReport::class],
+                ['viewAny', \Src\Reporting\TeacherLoadReport\Domain\Entities\TeacherLoadReport::class],
+            ])
+            {{--
+                Accordion kept from the original design, but its children
+                are real routes now. x-on:livewire:navigated.window closes
+                it after navigating so it does not stay stuck open across
+                pages — the same guard the original placeholder had.
+            --}}
             <div x-data="{ open: false }" x-on:livewire:navigated.window="open = false">
-                <div class="nav-item nav-parent" @click="open = !open; setSection('reportes', currentSub || 'reporte1')">
+                <div class="nav-item nav-parent" @click="open = !open">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
@@ -160,20 +171,25 @@
                     </svg>
                 </div>
                 <div class="nav-children" :class="{ 'open': open }" data-labels>
-                    <a href="#" class="nav-child" @click.prevent="setSection('reportes', 'reporte1')">
+                    @can('viewAny', \Src\Reporting\OfferReport\Domain\Entities\OfferReport::class)
+                    <a href="{{ route('reporting.offerreport.index') }}" wire:navigate wire:current="active" class="nav-child">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <polyline points="9 6 15 12 9 18"></polyline>
                         </svg>
-                        <span>{{ __('Report 1') }}</span>
+                        <span>{{ __('Academic offer') }}</span>
                     </a>
-                    <a href="#" class="nav-child" @click.prevent="setSection('reportes', 'reporte2')">
+                    @endcan
+                    @can('viewAny', \Src\Reporting\TeacherLoadReport\Domain\Entities\TeacherLoadReport::class)
+                    <a href="{{ route('reporting.teacherloadreport.index') }}" wire:navigate wire:current="active" class="nav-child">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <polyline points="9 6 15 12 9 18"></polyline>
                         </svg>
-                        <span>{{ __('Report 2') }}</span>
+                        <span>{{ __('Teacher load') }}</span>
                     </a>
+                    @endcan
                 </div>
             </div>
+            @endcanany
         </div>
     </nav>
 </aside>

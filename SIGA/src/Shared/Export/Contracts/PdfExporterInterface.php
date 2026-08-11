@@ -21,13 +21,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 interface PdfExporterInterface
 {
     /**
-     * @param string $paperSize Any size the underlying renderer accepts
-     *        ('a4', 'letter', 'legal', ...). Defaults to 'a4' since
-     *        that's the more common case; a specific report's own
-     *        design dictates otherwise (e.g. this app's report template
-     *        is built for US Letter to match its @page CSS rule) and
-     *        passes it explicitly — the port stays generic, only the
-     *        call site knows which size its own HTML was designed for.
+     * @param  string  $paperSize  Any size the underlying renderer accepts
+     *                             ('a4', 'letter', 'legal', ...). Defaults to 'a4' since
+     *                             that's the more common case; a specific report's own
+     *                             design dictates otherwise (e.g. this app's report template
+     *                             is built for US Letter to match its @page CSS rule) and
+     *                             passes it explicitly — the port stays generic, only the
+     *                             call site knows which size its own HTML was designed for.
      */
     public function fromHtml(string $html, string $filename, string $paperSize = 'a4'): StreamedResponse;
 }

@@ -11,11 +11,19 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_screen_can_be_rendered(): void
+    /**
+     * This app has no separate /login screen: the real login UI lives on
+     * the home page, so Fortify's login view was replaced by a redirect
+     * (see FortifyServiceProvider::configureViews). The assertion was
+     * still the starter kit's original `assertOk()`, which has been
+     * failing since that change; it now asserts the behaviour the
+     * application actually intends.
+     */
+    public function test_the_login_screen_redirects_to_the_home_page(): void
     {
         $response = $this->get(route('login'));
 
-        $response->assertOk();
+        $response->assertRedirect(route('home'));
     }
 
     public function test_users_can_authenticate_using_the_login_screen(): void

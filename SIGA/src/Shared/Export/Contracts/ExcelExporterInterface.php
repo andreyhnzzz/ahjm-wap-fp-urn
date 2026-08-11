@@ -24,12 +24,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 interface ExcelExporterInterface
 {
     /**
-     * @param iterable<array<string, scalar|null>> $rows Each element is one
-     *        spreadsheet row as an associative array; the keys of the
-     *        first row become the header row. Accepts any iterable
-     *        (array, Generator, LazyCollection, …) specifically so the
-     *        caller can pass a lazily-evaluated source and never hold
-     *        the full result set in memory at once.
+     * @param  iterable<array<string, scalar|null>>  $rows  Each element is one
+     *                                                      spreadsheet row as an associative array; the keys of the
+     *                                                      first row become the header row. Accepts any iterable
+     *                                                      (array, Generator, LazyCollection, …) specifically so the
+     *                                                      caller can pass a lazily-evaluated source and never hold
+     *                                                      the full result set in memory at once.
      */
     public function streamDownload(iterable $rows, string $filename): StreamedResponse;
 }

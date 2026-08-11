@@ -1,6 +1,7 @@
 @props([
 'show' => false,
 'title' => '',
+'wide' => false,
 ])
 
 {{--
@@ -9,9 +10,13 @@
     (form fields) and footer (action buttons) differ per module; the
     backdrop/header/close-button markup and classes are ported 1:1 from
     the approved design so every future modal looks identical.
+
+    `wide` opts into a roomier max-width for forms with many fields laid
+    out in a grid (the Group modal has nine). One extra class, not a
+    second modal component, so the chrome stays shared.
 --}}
 <div class="modal-backdrop {{ $show ? 'open' : '' }}">
-    <div class="modal">
+    <div class="modal {{ $wide ? 'modal-wide' : '' }}">
         <div class="modal-head">
             <span class="modal-title">{{ $title }}</span>
             <button type="button" class="modal-close" wire:click="closeModal" aria-label="{{ __('Close') }}">

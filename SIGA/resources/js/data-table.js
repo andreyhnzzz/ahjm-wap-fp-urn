@@ -29,7 +29,11 @@ document.addEventListener("alpine:init", () => {
     // ---- state -----------------------------------------------------
     rows: config.rows ?? [],
     searchable: config.searchable ?? [],
-    search: "",
+    // Pre-filled when the page was opened with a `?q=` query string —
+    // that's how the risk board (RE-04) can deep-link straight to the
+    // one group or teacher an alert is about instead of dropping the
+    // user on an unfiltered list. Empty for a normal visit.
+    search: config.search ?? "",
     perPage: config.perPage ?? 10,
     page: 1,
     sortKey: config.sortKey ?? null,

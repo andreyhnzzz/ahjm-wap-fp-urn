@@ -24,46 +24,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * response()->streamDownload() sidesteps that entirely, and keeps this
  * adapter symmetric with SpatieExcelExporter.
  *
- * ->withBrowsershot()->setNodeModulePath() points Browsershot's child
- * Node process straight at the project's own node_modules explicitly,
- * rather than relying on Node's implicit directory-walking resolution
- * to find puppeteer on its own — that implicit lookup is where this
- * broke the first time (Windows, PHP spawning a Node child process from
- * public/ as its working directory, global npm install not on that
- * resolution path). Requires `npm install puppeteer` run from the
- * Laravel project root (not `public/`, not a global -g install).
- *
- * ->timeout(15) deliberately well under PHP's default 30s
- * max_execution_time: if Chrome/Puppeteer ever hangs on launch again
- * (missing Chrome binary, a stuck child process, antivirus interference
- * — all real things that happened during setup), Browsershot throws its
- * own catchable ProcessTimedOutException at 15s instead of PHP's blunt
- * execution-time FatalError killing the whole request at 30s with no
- * usable error message.
- *
- * ->showBackground() is not optional here — Chrome's print/PDF engine
- * omits background colors and images by default (the same convention
- * browsers use for "print this page" to save ink), which would silently
- * drop the navy header, the striped rows, everything that makes this
- * report look like the approved design instead of plain black-on-white
- * text. Without this call the PDF would still "work", just not match.
- *
- * ->addChromiumArguments([...]) disables a handful of background
- * network/telemetry calls Chrome makes on startup by default even in
- * headless mode (Safe Browsing list updates, component/extension
- * update checks, sync, etc.), plus a few flags that speed up a cold
- * start and matter more once this runs on a real Linux server than on
- * a Windows dev machine (disable-gpu skips graphics-driver init headless
- * doesn't need; disable-dev-shm-usage avoids Chrome writing shared
- * memory to a tmpfs that's tiny by default on many Docker/Linux hosts,
- * a very common source of random crashes in containerized deployments;
- * disable-software-rasterizer skips a GPU fallback path headless will
- * never use). None of these change what gets rendered — same DOM, same
- * layout, same PDF — only how fast and how reliably Chrome gets there.
- * Combined with the template now being fully self-contained (no Google
- * Fonts network call either, see table-pdf.blade.php), this removes
- * every network-dependent variable from render time — what's left is
- * just Chrome's own startup + layout, which is fast and consistent.
+ * How Chromium itself is driven (node_modules path, timeout,
+ * backgrounds, startup flags) lives in BrowsershotConfiguration, shared
+ * with SpatiePdfFileWriter so a streamed PDF and a saved one can never
+ * come out looking different. Combined with the template being fully
+ * self-contained (no Google Fonts network call either, see
+ * table-pdf.blade.php), that removes every network-dependent variable
+ * from render time — what is left is Chrome's own startup and layout,
+ * which is fast and consistent.
  */
 final class SpatiePdfExporter implements PdfExporterInterface
 {
@@ -71,25 +39,8 @@ final class SpatiePdfExporter implements PdfExporterInterface
     {
         $pdfBytes = Pdf::html($html)
             ->format($paperSize)
-            ->withBrowsershot(function (Browsershot $browsershot): void {
-                $browsershot
-                    ->setNodeModulePath(base_path('node_modules'))
-                    ->timeout(15)
-                    ->showBackground()
-                    ->addChromiumArguments([
-                        'disable-extensions',
-                        'disable-background-networking',
-                        'disable-default-apps',
-                        'disable-sync',
-                        'disable-translate',
-                        'metrics-recording-only',
-                        'mute-audio',
-                        'no-first-run',
-                        'safebrowsing-disable-auto-update',
-                        'disable-gpu',
-                        'disable-dev-shm-usage',
-                        'disable-software-rasterizer',
-                    ]);
+            ->withBrowsershot(static function (Browsershot $browsershot): void {
+                BrowsershotConfiguration::apply($browsershot);
             })
             ->generatePdfContent();
 

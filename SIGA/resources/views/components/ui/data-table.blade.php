@@ -4,6 +4,7 @@
 'rows' => [],
 'mode' => 'server',
 'searchable' => [],
+'initialSearch' => '',
 'sortKey' => null,
 'sortDir' => 'asc',
 'perPage' => 10,
@@ -70,6 +71,7 @@ if ($lastPage <= 7) {
             x-data="crudTable({
         rows: @js($rows),
         searchable: @js($searchable),
+        search: @js($initialSearch),
         sortKey: @js($sortKey),
         sortDir: @js($sortDir),
         perPage: @js($perPage),
