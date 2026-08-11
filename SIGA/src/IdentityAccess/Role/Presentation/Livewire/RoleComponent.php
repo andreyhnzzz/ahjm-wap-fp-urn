@@ -141,7 +141,7 @@ class RoleComponent extends Component
             __('Roles'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
-            Str::slug(__('Roles')) . '.pdf',
+            Str::slug(__('Roles')).'.pdf',
             $exporter,
             paperSize: 'letter',
         );
@@ -154,7 +154,7 @@ class RoleComponent extends Component
         return $this->streamExcel(
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
-            Str::slug(__('Roles')) . '.xlsx',
+            Str::slug(__('Roles')).'.xlsx',
             $exporter,
         );
     }
@@ -244,7 +244,6 @@ class RoleComponent extends Component
     }
 
     /**
-     *
      * @return array<int, array<string, mixed>>
      */
     private function exportableRows(ListRolesUseCase $useCase, ?string $search): array
@@ -254,7 +253,6 @@ class RoleComponent extends Component
             $useCase->all(search: $this->authorizedSearch($search), sortBy: $this->sortKey, sortDir: $this->sortDir),
         );
     }
-
 
     private function authorizedSearch(?string $explicit = null): ?string
     {
@@ -268,7 +266,6 @@ class RoleComponent extends Component
     }
 
     /**
-     *
      * @return array<int, array{key: string, label: string, format?: callable}>
      */
     private function exportHeaders(): array
@@ -276,7 +273,7 @@ class RoleComponent extends Component
         return [
             ['key' => 'name', 'label' => __('Name')],
             ['key' => 'permissionsCount', 'label' => __('Permissions')],
-            ['key' => 'protected', 'label' => __('Type'), 'format' => fn(bool $protected): string => $protected ? __('System') : __('Custom')],
+            ['key' => 'protected', 'label' => __('Type'), 'format' => fn (bool $protected): string => $protected ? __('System') : __('Custom')],
         ];
     }
 
@@ -286,7 +283,7 @@ class RoleComponent extends Component
     private function permissionCatalog(ListPermissionsUseCase $useCase): array
     {
         return array_map(
-            static fn(Permission $permission) => [
+            static fn (Permission $permission) => [
                 'name' => $permission->name(),
                 'label' => PermissionLabelFormatter::forHumans($permission->module(), $permission->action()),
             ],

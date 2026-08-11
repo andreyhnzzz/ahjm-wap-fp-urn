@@ -29,7 +29,7 @@ final class Role
     ) {}
 
     /**
-     * @param array<int, string> $permissions
+     * @param  array<int, string>  $permissions
      */
     public static function create(string $name, array $permissions = []): self
     {
@@ -37,7 +37,7 @@ final class Role
     }
 
     /**
-     * @param array<int, string> $permissions
+     * @param  array<int, string>  $permissions
      */
     public static function reconstitute(int $id, string $name, array $permissions = []): self
     {
@@ -54,7 +54,7 @@ final class Role
     }
 
     /**
-     * @param array<int, string> $permissions
+     * @param  array<int, string>  $permissions
      */
     public function syncPermissions(array $permissions): void
     {

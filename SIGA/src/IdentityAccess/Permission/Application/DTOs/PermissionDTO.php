@@ -12,7 +12,7 @@ final readonly class PermissionDTO
     ) {}
 
     /**
-     * @param array{module: string, action: string} $data
+     * @param  array{module: string, action: string}  $data
      */
     public static function fromArray(array $data): self
     {

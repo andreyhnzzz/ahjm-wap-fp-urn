@@ -16,7 +16,6 @@ interface RoleRepositoryInterface
     public function find(int $id): ?Role;
 
     /**
-     *
      * @return array<int, Role>
      */
     public function all(?string $search = null, ?string $sortBy = null, string $sortDir = 'asc'): array;

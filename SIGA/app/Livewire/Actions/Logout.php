@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Actions;
 
+use Illuminate\Contracts\Auth\StatefulGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
@@ -14,7 +15,7 @@ class Logout
      */
     public function __invoke(): Redirector|RedirectResponse
     {
-        /** @var \Illuminate\Contracts\Auth\StatefulGuard $guard */
+        /** @var StatefulGuard $guard */
         $guard = Auth::guard('web');
         $guard->logout();
 

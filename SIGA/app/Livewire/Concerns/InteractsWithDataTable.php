@@ -129,7 +129,7 @@ trait InteractsWithDataTable
      * updates the DOM correctly on its own — every concrete component's
      * save()/delete() can call this unconditionally regardless of mode.
      *
-     * @param array<int, array<string, mixed>> $rows
+     * @param  array<int, array<string, mixed>>  $rows
      */
     public function refreshTable(array $rows): void
     {

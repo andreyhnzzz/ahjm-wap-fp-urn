@@ -116,7 +116,7 @@ class PermissionComponent extends Component
             __('Permissions'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
-            Str::slug(__('Permissions')) . '.pdf',
+            Str::slug(__('Permissions')).'.pdf',
             $exporter,
             paperSize: 'letter',
         );
@@ -129,7 +129,7 @@ class PermissionComponent extends Component
         return $this->streamExcel(
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
-            Str::slug(__('Permissions')) . '.xlsx',
+            Str::slug(__('Permissions')).'.xlsx',
             $exporter,
         );
     }

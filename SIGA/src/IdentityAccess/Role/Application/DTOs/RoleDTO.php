@@ -12,7 +12,7 @@ namespace Src\IdentityAccess\Role\Application\DTOs;
 final readonly class RoleDTO
 {
     /**
-     * @param array<int, string> $permissions
+     * @param  array<int, string>  $permissions
      */
     public function __construct(
         public string $name,
@@ -20,7 +20,7 @@ final readonly class RoleDTO
     ) {}
 
     /**
-     * @param array{name: string, permissions?: array<int, string>} $data
+     * @param  array{name: string, permissions?: array<int, string>}  $data
      */
     public static function fromArray(array $data): self
     {

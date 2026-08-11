@@ -24,8 +24,50 @@
  * Register once in resources/js/app.js:
  *   import './data-table.js';
  */
+
+type Row = Record<string, string | number | boolean | null>;
+
+interface CrudTableConfig {
+  rows?: Row[];
+  searchable?: string[];
+  search?: string;
+  perPage?: number;
+  sortKey?: string | null;
+  sortDir?: "asc" | "desc";
+}
+
+interface CrudTableComponent {
+  rows: Row[];
+  searchable: string[];
+  search: string;
+  perPage: number;
+  page: number;
+  sortKey: string | null;
+  sortDir: "asc" | "desc";
+
+  init(): void;
+
+  readonly filtered: Row[];
+  readonly sorted: Row[];
+  readonly total: number;
+  readonly lastPage: number;
+  readonly from: number;
+  readonly to: number;
+  readonly pageRows: Row[];
+  readonly pageSet: number[];
+
+  sort(key: string): void;
+  previousPage(): void;
+  nextPage(): void;
+  gotoPage(p: number): void;
+  paginationSummary(template: string): string;
+
+  // Alpine-injected magic method.
+  $watch(property: string, callback: (value: unknown) => void): void;
+}
+
 document.addEventListener("alpine:init", () => {
-  Alpine.data("crudTable", (config = {}) => ({
+  Alpine.data("crudTable", (config: CrudTableConfig = {}): CrudTableComponent => ({
     // ---- state -----------------------------------------------------
     rows: config.rows ?? [],
     searchable: config.searchable ?? [],
@@ -74,7 +116,7 @@ document.addEventListener("alpine:init", () => {
     },
 
     // ---- derived data ------------------------------------------------
-    get filtered() {
+    get filtered(): Row[] {
       const term = this.search.trim().toLowerCase();
       if (term === "" || this.searchable.length === 0) return this.rows;
 
@@ -87,42 +129,43 @@ document.addEventListener("alpine:init", () => {
       );
     },
 
-    get sorted() {
+    get sorted(): Row[] {
       if (!this.sortKey) return this.filtered;
 
+      const key = this.sortKey;
       const dir = this.sortDir === "desc" ? -1 : 1;
 
       return [...this.filtered].sort((a, b) => {
-        const av = a[this.sortKey];
-        const bv = b[this.sortKey];
+        const av = a[key];
+        const bv = b[key];
 
         if (av === bv) return 0;
 
-        return typeof av === "string"
+        return typeof av === "string" && typeof bv === "string"
           ? av.localeCompare(bv) * dir
-          : av > bv
+          : (av as string | number) > (bv as string | number)
             ? dir
             : -dir;
       });
     },
 
-    get total() {
+    get total(): number {
       return this.filtered.length;
     },
 
-    get lastPage() {
+    get lastPage(): number {
       return Math.max(1, Math.ceil(this.total / this.perPage));
     },
 
-    get from() {
+    get from(): number {
       return this.total === 0 ? 0 : (this.page - 1) * this.perPage + 1;
     },
 
-    get to() {
+    get to(): number {
       return Math.min(this.page * this.perPage, this.total);
     },
 
-    get pageRows() {
+    get pageRows(): Row[] {
       const start = (this.page - 1) * this.perPage;
 
       return this.sorted.slice(start, start + this.perPage);
@@ -131,7 +174,7 @@ document.addEventListener("alpine:init", () => {
     // Same "compact with ellipsis" page-number set the server-mode
     // Blade view builds in PHP — kept identical so pagination looks
     // pixel-for-pixel the same in either mode.
-    get pageSet() {
+    get pageSet(): number[] {
       const last = this.lastPage;
 
       if (last <= 7) {
@@ -152,7 +195,7 @@ document.addEventListener("alpine:init", () => {
     },
 
     // ---- actions -----------------------------------------------------
-    sort(key) {
+    sort(key: string) {
       this.sortDir =
         this.sortKey === key && this.sortDir === "asc" ? "desc" : "asc";
       this.sortKey = key;
@@ -166,7 +209,7 @@ document.addEventListener("alpine:init", () => {
       this.page = Math.min(this.lastPage, this.page + 1);
     },
 
-    gotoPage(p) {
+    gotoPage(p: number) {
       this.page = Math.max(1, Math.min(this.lastPage, p));
     },
 
@@ -176,11 +219,11 @@ document.addEventListener("alpine:init", () => {
     // registros" (see lang/es.json). We only fill in the numbers here,
     // so the actual wording/word-order stays 100% owned by Laravel's
     // translation files — no English fallback ever leaks into the UI.
-    paginationSummary(template) {
+    paginationSummary(template: string): string {
       return template
-        .replace(":from", this.from)
-        .replace(":to", this.to)
-        .replace(":total", this.total);
+        .replace(":from", String(this.from))
+        .replace(":to", String(this.to))
+        .replace(":total", String(this.total));
     },
-  }));
+  }) as CrudTableComponent);
 });

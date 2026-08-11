@@ -69,8 +69,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 trait InteractsWithExports
 {
     /**
-     * @param array<int, array{key: string, label: string, format?: callable}> $headers
-     * @param iterable<array<string, mixed>> $rows
+     * @param  array<int, array{key: string, label: string, format?: callable}>  $headers
+     * @param  iterable<array<string, mixed>>  $rows
      */
     protected function streamExcel(array $headers, iterable $rows, string $filename, ExcelExporterInterface $exporter): StreamedResponse
     {
@@ -78,10 +78,10 @@ trait InteractsWithExports
     }
 
     /**
-     * @param array<int, array{key: string, label: string, format?: callable}> $headers
-     * @param iterable<array<string, mixed>> $rows
-     * @param string $paperSize Passed straight through to PdfExporterInterface — see
-     *        that contract for why it's a parameter here rather than a fixed default.
+     * @param  array<int, array{key: string, label: string, format?: callable}>  $headers
+     * @param  iterable<array<string, mixed>>  $rows
+     * @param  string  $paperSize  Passed straight through to PdfExporterInterface — see
+     *                             that contract for why it's a parameter here rather than a fixed default.
      */
     protected function streamPdf(string $title, array $headers, iterable $rows, string $filename, PdfExporterInterface $exporter, string $paperSize = 'a4'): StreamedResponse
     {
@@ -106,8 +106,8 @@ trait InteractsWithExports
      * that's fine for a catalog this size, just not a pattern to copy
      * blindly for a table with tens of thousands of rows.
      *
-     * @param array<int, array{key: string, label: string, format?: callable}> $headers
-     * @param iterable<array<string, mixed>> $rows
+     * @param  array<int, array{key: string, label: string, format?: callable}>  $headers
+     * @param  iterable<array<string, mixed>>  $rows
      * @return \Generator<int, array<string, mixed>>
      */
     private function mapRowsForExport(array $headers, iterable $rows): \Generator

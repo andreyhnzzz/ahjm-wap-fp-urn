@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 namespace Src\IdentityAccess\Role\Domain\Exceptions;
 
 use DomainException;

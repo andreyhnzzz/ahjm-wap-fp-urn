@@ -181,9 +181,19 @@ jornada exactamente en el techo, ruido de coma flotante, acumulación por
 cuatrimestre, grupos cancelados), las tres verdictos de RE-02 (incluido el 80 %
 exacto) y los invariantes de los agregados.
 
-## 8. Fuera del alcance de este módulo
+## 8. Requisitos técnicos transversales
 
-Los requisitos técnicos transversales del curso que **no** cubre este entregable:
-TypeScript, consumo de una API REST externa y autenticación JWT. El resto del stack
-obligatorio (TALL, variables de entorno, pruebas unitarias, Arquitectura
-Hexagonal/DDD, repositorio documentado) sí está.
+- **TypeScript.** `resources/js/data-table.ts` (la fuente de datos Alpine que
+  alimenta las tablas client-side) está tipado; `tsconfig.json` en modo `strict`,
+  `npm run types:check` lo verifica.
+- **API REST externa.** El widget de feriados del dashboard
+  (`App\Services\PublicHolidays\PublicHolidaysClient`) consume la API pública de
+  Nager.Date (sin llave), cacheada 24 h; ver `tests/Feature/HolidaysWidgetTest.php`.
+- **JWT.** `routes/api.php` expone un API JSON stateless independiente de la sesión
+  Livewire: `POST /api/login` entrega un token (firmado con `JWT_SECRET`, no con
+  `APP_KEY`), `GET /api/me`, `/api/teachers` y `/api/risk-board` lo exigen vía el
+  middleware `jwt.auth`. Cuentas con 2FA confirmado no pueden entrar por esta vía
+  (423) — ver `tests/Feature/Api/JwtAuthTest.php`.
+
+El resto del stack obligatorio (TALL, variables de entorno, pruebas unitarias,
+Arquitectura Hexagonal/DDD, repositorio documentado) ya estaba cubierto.

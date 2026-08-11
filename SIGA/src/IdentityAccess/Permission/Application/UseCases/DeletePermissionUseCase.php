@@ -15,7 +15,7 @@ final class DeletePermissionUseCase
 
     public function handle(int $id): void
     {
-        if (!$this->repository->find($id)) {
+        if (! $this->repository->find($id)) {
             throw PermissionNotFoundException::withId($id);
         }
 

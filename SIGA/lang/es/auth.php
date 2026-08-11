@@ -10,10 +10,9 @@ return [
     | messages that we need to display to the user.
     |
     */
-    'failed'   => 'Estas credenciales no coinciden con nuestros registros.',
+    'failed' => 'Estas credenciales no coinciden con nuestros registros.',
     'password' => 'La contraseña es incorrecta.',
     'throttle' => 'Demasiados intentos de acceso. Por favor intente de nuevo en :seconds segundos.',
-
 
     'login_title' => 'Iniciar sesión',
     'login_subtitle' => 'Cuenta institucional UTN',
@@ -21,7 +20,6 @@ return [
     'password_label' => 'Contraseña',
     'forgot_password' => '¿Olvidó su contraseña?',
     'login_button' => 'Ingresar',
-
 
     'forgot_title' => '¿Olvidó su contraseña?',
     'forgot_subtitle' => 'Ingrese su correo institucional y le enviaremos un enlace para restablecerla',

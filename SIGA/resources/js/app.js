@@ -1,1 +1,1 @@
-import "./data-table.js";
+import "./data-table.ts";

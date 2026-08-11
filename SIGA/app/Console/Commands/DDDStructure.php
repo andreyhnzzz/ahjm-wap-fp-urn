@@ -71,14 +71,14 @@ class DDDStructure extends Command
     public function handle(): int
     {
         $context = Str::studly((string) $this->argument('context'));
-        $entity  = Str::studly((string) $this->argument('entity'));
+        $entity = Str::studly((string) $this->argument('entity'));
         $basePath = base_path("src/{$context}/{$entity}");
 
         $stubsToGenerate = $this->resolveStubsToGenerate();
 
         // Fail fast: never touch the filesystem if a required stub is missing.
         // A half-written module is worse than no module.
-        if (!$this->assertStubsExist($stubsToGenerate)) {
+        if (! $this->assertStubsExist($stubsToGenerate)) {
             return Command::FAILURE;
         }
 
@@ -86,9 +86,10 @@ class DDDStructure extends Command
         // Immutability of the core domain is a strict architectural boundary,
         // with a deliberate, explicit escape hatch for iterative development.
         if (File::exists($basePath)) {
-            if (!$this->option('force')) {
+            if (! $this->option('force')) {
                 $this->error("Critical: Architecture boundaries for {$context}\\{$entity} already exist.");
-                $this->line("Aborting operation to preserve domain integrity. Use --force to regenerate.");
+                $this->line('Aborting operation to preserve domain integrity. Use --force to regenerate.');
+
                 return Command::FAILURE;
             }
 
@@ -110,13 +111,14 @@ class DDDStructure extends Command
             $this->error("Generation failed: {$e->getMessage()}");
             $this->line('Rolling back to preserve domain integrity...');
             File::deleteDirectory($basePath);
+
             return Command::FAILURE;
         }
 
         $this->newLine();
 
-        if (!$advancedGenerated) {
-            $this->line("No advanced components requested. (Use --help for available options).");
+        if (! $advancedGenerated) {
+            $this->line('No advanced components requested. (Use --help for available options).');
         }
 
         // Wire the new module into the container / auth layer automatically.
@@ -152,14 +154,15 @@ class DDDStructure extends Command
 
         return $stubs;
     }
+
     /**
-     * @param array<int, string> $stubs
+     * @param  array<int, string>  $stubs
      */
     private function assertStubsExist(array $stubs): bool
     {
         $missing = array_values(array_filter(
             $stubs,
-            fn(string $stub) => !File::exists(base_path("stubs/ddd/{$stub}"))
+            fn (string $stub) => ! File::exists(base_path("stubs/ddd/{$stub}"))
         ));
 
         if (empty($missing)) {
@@ -183,8 +186,9 @@ class DDDStructure extends Command
     {
         $composerPath = base_path('composer.json');
 
-        if (!File::exists($composerPath)) {
+        if (! File::exists($composerPath)) {
             $this->warn('composer.json not found — skipping PSR-4 verification.');
+
             return;
         }
 
@@ -198,7 +202,7 @@ class DDDStructure extends Command
 
         File::put(
             $composerPath,
-            json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL
+            json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL
         );
 
         $this->warn('Registered "Src\\\\" => "src/" under composer.json psr-4 autoload.');
@@ -246,13 +250,13 @@ class DDDStructure extends Command
             File::makeDirectory($dir, 0755, true, true);
         }
 
-        $this->info("Architectural boundaries established successfully.");
+        $this->info('Architectural boundaries established successfully.');
     }
 
     private function generateBaseStubs(string $basePath, string $context, string $entity): void
     {
         $this->newLine();
-        $this->info("Generating base stubs across layers...");
+        $this->info('Generating base stubs across layers...');
 
         // Infrastructure Layer: Relying on Repositories to abstract Eloquent logic.
         $this->generateFromStub('repository.stub', "{$basePath}/Infrastructure/Persistence/Repositories/Eloquent{$entity}Repository.php", $context, $entity);
@@ -269,7 +273,7 @@ class DDDStructure extends Command
     private function generateOptionalStubs(string $basePath, string $context, string $entity): bool
     {
         $this->newLine();
-        $this->info("Evaluating flags for advanced domain components...");
+        $this->info('Evaluating flags for advanced domain components...');
         $generated = false;
 
         if ($this->option('event')) {
@@ -317,7 +321,7 @@ class DDDStructure extends Command
         // Defensive: assertStubsExist() already guarantees this pre-flight,
         // but a generator that can silently skip a layer is worse than one
         // that fails loudly and lets handle() roll back.
-        if (!File::exists($stubPath)) {
+        if (! File::exists($stubPath)) {
             throw new RuntimeException("Missing stub file: {$stubPath}");
         }
 
@@ -331,7 +335,7 @@ class DDDStructure extends Command
 
         File::put($destination, $content);
 
-        $relativePath = str_replace(base_path() . DIRECTORY_SEPARATOR, '', $destination);
+        $relativePath = str_replace(base_path().DIRECTORY_SEPARATOR, '', $destination);
         $this->line("<fg=green>✓ Generated:</> {$relativePath}");
     }
 
@@ -348,8 +352,9 @@ class DDDStructure extends Command
     {
         $providerPath = app_path('Providers/DomainServiceProvider.php');
 
-        if (!File::exists($providerPath)) {
+        if (! File::exists($providerPath)) {
             $this->warn('DomainServiceProvider.php not found — skipping automatic wiring.');
+
             return;
         }
 
@@ -393,22 +398,24 @@ class DDDStructure extends Command
 
         if (str_contains($content, $uniqueMarker)) {
             $this->line("<fg=yellow>⚠ Skipped:</> {$label} already registered.");
+
             return;
         }
 
-        $pattern = '/(private array \$' . preg_quote($property, '/') . ' = \[)(.*?)(\n(\s*)\];)/s';
+        $pattern = '/(private array \$'.preg_quote($property, '/').' = \[)(.*?)(\n(\s*)\];)/s';
 
-        if (!preg_match($pattern, $content)) {
-            $this->warn("Could not locate \${$property} in " . basename($path) . " — add this binding manually:");
+        if (! preg_match($pattern, $content)) {
+            $this->warn("Could not locate \${$property} in ".basename($path).' — add this binding manually:');
             $this->line(trim($line));
+
             return;
         }
 
         $content = preg_replace_callback($pattern, function (array $matches) use ($line) {
-            return $matches[1] . $matches[2] . "\n{$line}" . $matches[3];
+            return $matches[1].$matches[2]."\n{$line}".$matches[3];
         }, $content, 1);
 
         File::put($path, $content);
-        $this->line("<fg=green>✓ Wired:</> {$label} into " . basename($path));
+        $this->line("<fg=green>✓ Wired:</> {$label} into ".basename($path));
     }
 }

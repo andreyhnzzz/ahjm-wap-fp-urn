@@ -68,7 +68,7 @@ final class EloquentRoleRepository implements RoleRepositoryInterface
     {
         $model = $role->id()
             ? RoleModel::query()->findOrFail($role->id())
-            : new RoleModel();
+            : new RoleModel;
 
         $model->name = $role->name();
         $model->save();

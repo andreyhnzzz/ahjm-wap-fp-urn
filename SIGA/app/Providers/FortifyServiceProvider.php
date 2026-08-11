@@ -52,13 +52,13 @@ class FortifyServiceProvider extends ServiceProvider
         // redirect from the `guest`/`auth` middleware) straight to home.
         // POST /login (the actual credential submission) is untouched —
         // this only changes what GET /login shows.
-        Fortify::loginView(fn() => redirect()->route('home'));
-        Fortify::verifyEmailView(fn() => view('pages::auth.verify-email'));
-        Fortify::twoFactorChallengeView(fn() => view('pages::auth.two-factor-challenge'));
-        Fortify::confirmPasswordView(fn() => view('pages::auth.confirm-password'));
-        Fortify::registerView(fn() => view('pages::auth.register'));
-        Fortify::resetPasswordView(fn() => view('pages::auth.reset-password'));
-        Fortify::requestPasswordResetLinkView(fn() => view('pages::auth.forgot-password'));
+        Fortify::loginView(fn () => redirect()->route('home'));
+        Fortify::verifyEmailView(fn () => view('pages::auth.verify-email'));
+        Fortify::twoFactorChallengeView(fn () => view('pages::auth.two-factor-challenge'));
+        Fortify::confirmPasswordView(fn () => view('pages::auth.confirm-password'));
+        Fortify::registerView(fn () => view('pages::auth.register'));
+        Fortify::resetPasswordView(fn () => view('pages::auth.reset-password'));
+        Fortify::requestPasswordResetLinkView(fn () => view('pages::auth.forgot-password'));
     }
 
     /**
@@ -71,7 +71,7 @@ class FortifyServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())) . '|' . $request->ip());
+            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
 
             return Limit::perMinute(5)->by($throttleKey);
         });
@@ -80,7 +80,7 @@ class FortifyServiceProvider extends ServiceProvider
             $credentialId = $request->input('credential.id');
 
             return Limit::perMinute(10)->by(
-                ($credentialId ?: $request->session()->getId()) . '|' . $request->ip(),
+                ($credentialId ?: $request->session()->getId()).'|'.$request->ip(),
             );
         });
     }

@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "types:check": "tsc"
     },
     "dependencies": {
         "@laravel/passkeys": "^0.2.0",
@@ -14,6 +15,9 @@
         "puppeteer": "^25.5.0",
         "tailwindcss": "^4.0.7",
         "vite": "^8.0.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.7.3"
     },
     "optionalDependencies": {
         "@rollup/rollup-linux-x64-gnu": "4.9.5",

@@ -72,7 +72,7 @@ final class EloquentPermissionRepository implements PermissionRepositoryInterfac
     {
         $model = $permission->id()
             ? PermissionModel::query()->findOrFail($permission->id())
-            : new PermissionModel();
+            : new PermissionModel;
 
         $model->module = $permission->module();
         $model->action = $permission->action();

@@ -5,6 +5,7 @@ namespace App\Concerns;
 use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * Supports permissions inherited through roles AND permissions granted
  * directly to a user, mirroring laravel-permission's public API surface.
  *
- * @mixin \Illuminate\Database\Eloquent\Model
+ * @mixin Model
  *
  * @property-read Collection<int, Role> $roles
  * @property-read Collection<int, Permission> $permissions
@@ -39,8 +40,9 @@ trait HasRolesAndPermissions
     {
         return $this->roles->contains('name', $role);
     }
+
     /**
-     * @param array<int, string> $roles
+     * @param  array<int, string>  $roles
      */
     public function hasAnyRole(array $roles): bool
     {
@@ -54,7 +56,7 @@ trait HasRolesAndPermissions
     }
 
     /**
-     * @param array<int, string> $roles
+     * @param  array<int, string>  $roles
      */
     public function syncRoles(array $roles): void
     {
@@ -79,7 +81,6 @@ trait HasRolesAndPermissions
         return $this->permissions->contains('name', $permission);
     }
 
-
     public function hasPermissionTo(string $permission): bool
     {
         if ($this->hasDirectPermission($permission)) {
@@ -87,12 +88,12 @@ trait HasRolesAndPermissions
         }
 
         return $this->roles->contains(
-            fn(Role $role) => $role->permissions->contains('name', $permission)
+            fn (Role $role) => $role->permissions->contains('name', $permission)
         );
     }
 
     /**
-     * @param array<int, string> $permissions
+     * @param  array<int, string>  $permissions
      */
     public function hasAnyPermission(array $permissions): bool
     {
