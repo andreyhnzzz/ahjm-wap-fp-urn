@@ -1,4 +1,15 @@
-# SIGA UTN — Módulo de Reportes y Tablero de Riesgos
+# 🎓 SIGA UTN — Módulo de Reportes y Tablero de Riesgos
+
+![PHP](https://img.shields.io/badge/PHP-8.4%2B-777BB4?style=flat-square&logo=php&logoColor=white)
+![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?style=flat-square&logo=laravel&logoColor=white)
+![Livewire](https://img.shields.io/badge/Livewire-4-4E56A6?style=flat-square&logo=livewire&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Alpine.js](https://img.shields.io/badge/Alpine.js-TALL_stack-8BC0D0?style=flat-square&logo=alpinedotjs&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-embedded-003B57?style=flat-square&logo=sqlite&logoColor=white)
+![Architecture](https://img.shields.io/badge/architecture-DDD%20%2F%20Hexagonal-0f2547?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-102%20passing-2EA44F?style=flat-square&logo=checkmarx&logoColor=white)
+![PHPStan](https://img.shields.io/badge/PHPStan-level%207-8B5CF6?style=flat-square&logo=php&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-3178C6?style=flat-square)
 
 Analítica ejecutiva de la oferta académica para la Sede Regional San Carlos de la
 Universidad Técnica Nacional. Implementa los requerimientos **INFRA-01**, **RE-01**,
@@ -7,7 +18,7 @@ Hexagonal con DDD).
 
 ---
 
-## 1. Requisitos
+## 1. 📋 Requisitos
 
 | Herramienta | Versión mínima | Por qué |
 |---|---|---|
@@ -19,7 +30,7 @@ Hexagonal con DDD).
 La base de datos por defecto es **SQLite**: no hay servidor que instalar ni
 configurar. El archivo vive en `database/database.sqlite`.
 
-## 2. Instalación
+## 2. ⚙️ Instalación
 
 ```bash
 composer install
@@ -55,14 +66,14 @@ Queda en `http://localhost:8000`. El `.env` ya viene listo (clave de aplicación
 incluida); si se parte de cero, `cp .env.example .env` y luego
 `php artisan key:generate`.
 
-### Usuarios sembrados
+### 🔑 Usuarios sembrados
 
 | Correo | Contraseña | Rol |
 |---|---|---|
 | `prueba@gmail.com` | `12345678` | Superadmin |
 | `admin@gmail.com` | `12345678` | Admin |
 
-## 3. Qué queda cargado al sembrar
+## 3. 🌱 Qué queda cargado al sembrar
 
 `AcademicDataSeeder` es **determinista** (sin `faker`): dos ejecuciones producen
 exactamente el mismo tablero, de modo que una regresión en las reglas de riesgo se
@@ -81,7 +92,7 @@ ve como un número distinto y no se confunde con "datos aleatorios diferentes".
 | María Fernanda Solís: 1.00 sobre 1.00 | Sin alerta en RE-02 |
 | `ADM-101-G02` cancelado y sin docente | Los grupos cancelados **no** generan ruido en el tablero |
 
-## 4. Pantallas
+## 4. 🖥️ Pantallas
 
 | Ruta | Requerimiento | Qué hace |
 |---|---|---|
@@ -96,7 +107,7 @@ Todas exigen permiso: la ruta se autoriza en `mount()`, cada acción se vuelve a
 autorizar por su cuenta, y el enlace del sidebar sólo aparece si el usuario puede
 verla.
 
-## 5. Arquitectura
+## 5. 🏛️ Arquitectura
 
 Cada módulo son cuatro capas bajo `src/{Contexto}/{Entidad}/`:
 
@@ -107,7 +118,7 @@ Infrastructure/  Adaptadores (Eloquent, sistema de archivos). Lo único que cono
 Presentation/    Componentes Livewire, Forms, Policies y rutas.
 ```
 
-### Contextos acotados
+### 📦 Contextos acotados
 
 | Contexto | Módulos | Por qué está separado |
 |---|---|---|
@@ -123,7 +134,7 @@ excepción, documentada como *Shared Kernel*, son los enums `Modality` y
 `GroupStatus`: un reporte *sobre* la oferta tiene que hablar su vocabulario, y
 duplicar el enum garantizaría que ambos se desincronizaran.
 
-### Dónde vive cada regla de negocio
+### 📍 Dónde vive cada regla de negocio
 
 | Regla | Archivo |
 |---|---|
@@ -138,7 +149,7 @@ Los umbrales configurables (`config/academic.php`, alimentado por variables de
 entorno) se leen **una sola vez**, en `DomainServiceProvider`, y entran al dominio
 como valores planos. Por eso `src/` no contiene ni un `config()` ni un `env()`.
 
-## 6. Decisiones técnicas
+## 6. 🧠 Decisiones técnicas
 
 **Tiempo real del tablero (RE-04).** `wire:poll` con intervalo configurable
 (15 s por defecto, acotado en código a 5–60 s). Se eligió sobre WebSockets porque el
@@ -164,7 +175,7 @@ precisión real de la columna `decimal(4,2)`. Sin eso, `0.35 × 3` da
 `1.0499999999999998` en binario y podría inventar —o perder— un conflicto de
 jornada por ruido de coma flotante.
 
-## 7. Verificación
+## 7. ✅ Verificación
 
 ```bash
 composer run test
@@ -181,7 +192,7 @@ jornada exactamente en el techo, ruido de coma flotante, acumulación por
 cuatrimestre, grupos cancelados), las tres verdictos de RE-02 (incluido el 80 %
 exacto) y los invariantes de los agregados.
 
-## 8. Requisitos técnicos transversales
+## 8. 🔌 Requisitos técnicos transversales
 
 - **TypeScript.** `resources/js/data-table.ts` (la fuente de datos Alpine que
   alimenta las tablas client-side) está tipado; `tsconfig.json` en modo `strict`,
