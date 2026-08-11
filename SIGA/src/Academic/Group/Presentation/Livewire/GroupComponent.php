@@ -193,8 +193,13 @@ class GroupComponent extends Component
     ): View {
         $view = $this->isServerMode()
             ? $this->renderServerMode($useCase, $teachersUseCase, $classroomsUseCase)
-            : $this->renderClientMode($useCase, $teachersUseCase, $classroomsUseCase);
+            : $this->renderClientMode($useCase, $teachersUseCase, $classroomsUseCase, $this->isFirstRender());
 
+        // teacherOptions/classroomOptions are NOT gated like rows: these
+        // <select> options are plain server-rendered Blade @foreach
+        // output with no Alpine layer at all, so Livewire morphs them
+        // fresh on every render — skipping the fetch here would empty
+        // both dropdowns the moment any modal reopens after the first load.
         $view = $view->with([
             'teacherOptions' => $this->teacherOptions($teachersUseCase),
             'classroomOptions' => $this->classroomOptions($classroomsUseCase),
@@ -213,10 +218,11 @@ class GroupComponent extends Component
         ListGroupsUseCase $useCase,
         ListTeachersUseCase $teachersUseCase,
         ListClassroomsUseCase $classroomsUseCase,
+        bool $firstRender,
     ): View {
         return view('academic.group.livewire.group-component', [
             'tableMode' => 'client',
-            'rows' => $this->freshRows($useCase, $teachersUseCase, $classroomsUseCase),
+            'rows' => $firstRender ? $this->freshRows($useCase, $teachersUseCase, $classroomsUseCase) : [],
         ]);
     }
 

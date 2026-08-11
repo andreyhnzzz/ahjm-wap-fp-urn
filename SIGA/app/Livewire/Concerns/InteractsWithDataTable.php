@@ -49,6 +49,33 @@ trait InteractsWithDataTable
     public string $sortDir = 'asc';
 
     /**
+     * Public (not protected) so Livewire's snapshot carries it across
+     * requests — flips true after this component's first render.
+     */
+    public bool $bootstrapped = false;
+
+    /**
+     * True on this component's very first render only. Call once at the
+     * top of render(), before building any client-mode `rows` or modal
+     * lookup catalogs (permission list, teacher/classroom options, ...):
+     * those are read by Alpine exactly once, the moment their element
+     * first enters the DOM, and never again — Livewire's morph preserves
+     * an already-mounted Alpine component's state instead of re-reading
+     * a fresh x-data attribute (see refreshTable() below). Every render
+     * after the first was fetching that data from the DB for nothing.
+     */
+    protected function isFirstRender(): bool
+    {
+        if ($this->bootstrapped) {
+            return false;
+        }
+
+        $this->bootstrapped = true;
+
+        return true;
+    }
+
+    /**
      * Exposed to the Blade view so it can pick which set of directives to
      * render (wire:* for 'server', x-* or @* for 'client')
      * without changing a single visual class.

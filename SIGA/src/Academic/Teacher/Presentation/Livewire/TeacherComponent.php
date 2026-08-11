@@ -153,7 +153,7 @@ class TeacherComponent extends Component
     {
         $view = $this->isServerMode()
             ? $this->renderServerMode($useCase)
-            : $this->renderClientMode($useCase);
+            : $this->renderClientMode($useCase, $this->isFirstRender());
 
         /** @disregard P1013 Livewire registra ->layout() como macro en runtime sobre Illuminate\View\View */
         return $view->layout('components.layouts.dashboard', [
@@ -162,11 +162,11 @@ class TeacherComponent extends Component
         ]);
     }
 
-    private function renderClientMode(ListTeachersUseCase $useCase): View
+    private function renderClientMode(ListTeachersUseCase $useCase, bool $firstRender): View
     {
         return view('academic.teacher.livewire.teacher-component', [
             'tableMode' => 'client',
-            'rows' => $this->freshRows($useCase),
+            'rows' => $firstRender ? $this->freshRows($useCase) : [],
         ]);
     }
 

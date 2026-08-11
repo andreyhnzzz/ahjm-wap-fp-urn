@@ -163,8 +163,14 @@ class RoleComponent extends Component
     {
         $view = $this->isServerMode()
             ? $this->renderServerMode($useCase)
-            : $this->renderClientMode($useCase);
+            : $this->renderClientMode($useCase, $this->isFirstRender());
 
+        // permissionCatalog is NOT gated like rows: unlike the crudTable
+        // (whose x-for reads Alpine-only, @js()-seeded state), the
+        // permission checklist below is a real server-rendered Blade
+        // @forelse — Livewire morphs those <input type="checkbox">
+        // elements on every render, so this has to stay fresh every time
+        // or the checklist would empty out the moment any modal reopens.
         $view = $view->with('permissionCatalog', $this->permissionCatalog($permissionsUseCase));
 
         /** @disregard P1013 Livewire registra ->layout() como macro en runtime sobre Illuminate\View\View */
@@ -179,11 +185,11 @@ class RoleComponent extends Component
      * projected into plain arrays for Alpine (resources/js/data-table.js).
      * No Domain Entity ever reaches the browser.
      */
-    private function renderClientMode(ListRolesUseCase $useCase): View
+    private function renderClientMode(ListRolesUseCase $useCase, bool $firstRender): View
     {
         return view('identityaccess.role.livewire.role-component', [
             'tableMode' => 'client',
-            'rows' => $this->freshRows($useCase),
+            'rows' => $firstRender ? $this->freshRows($useCase) : [],
         ]);
     }
 

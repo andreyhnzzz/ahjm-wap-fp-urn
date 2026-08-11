@@ -10,6 +10,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Src\Academic\Classroom\Presentation\Livewire\ClassroomComponent;
 use Src\Academic\Group\Presentation\Livewire\GroupComponent;
@@ -187,6 +188,31 @@ class AcademicModulesTest extends TestCase
         Livewire::test(TeacherComponent::class)->call('delete', $teacher->id);
 
         $this->assertDatabaseHas('groups', ['id' => $group->id, 'teacher_id' => null]);
+    }
+
+    /**
+     * Client mode's `rows` are read by Alpine exactly once (see
+     * InteractsWithDataTable::isFirstRender()) — any render after the
+     * first must not re-query the full table just to build data nobody
+     * downstream reads. Regression guard for that guard.
+     */
+    public function test_reopening_the_modal_does_not_requery_the_full_table(): void
+    {
+        $this->actingAs($this->superadmin());
+
+        Teacher::factory()->count(3)->create();
+
+        $component = Livewire::test(TeacherComponent::class);
+
+        DB::enableQueryLog();
+        $component->call('openCreateModal');
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertFalse(
+            collect($queries)->contains(fn (array $q): bool => str_contains(strtolower((string) $q['query']), 'teachers')),
+            'openCreateModal re-fetched the teacher list; it should only be fetched on the first render.',
+        );
     }
 
     private function superadmin(): User
