@@ -230,5 +230,17 @@
   "Show or hide password": "Mostrar u ocultar la contraseña",
   "These credentials do not match our records.": "Las credenciales no coinciden con nuestros registros.",
   "Upcoming public holidays": "Próximos feriados",
-  "No holiday data available right now.": "No hay datos de feriados disponibles en este momento."
+  "No holiday data available right now.": "No hay datos de feriados disponibles en este momento.",
+  "Create": "Crear",
+  "Export PDF of": "Exportar PDF de",
+  "Export Excel of": "Exportar Excel de",
+  "roles": "roles",
+  "teachers": "docentes",
+  "classrooms": "aulas",
+  "groups": "grupos académicos",
+  "academic offer reports": "reportes de oferta académica",
+  "teacher load reports": "reportes de carga docente",
+  "risk board": "tablero de riesgos",
+  "A system role cannot be renamed.": "Un rol del sistema no se puede renombrar.",
+  "A system role cannot be deleted.": "Un rol del sistema no se puede eliminar."
 }
