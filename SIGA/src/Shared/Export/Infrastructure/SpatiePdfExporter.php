@@ -37,12 +37,15 @@ final class SpatiePdfExporter implements PdfExporterInterface
 {
     public function fromHtml(string $html, string $filename, string $paperSize = 'a4'): StreamedResponse
     {
-        $pdfBytes = Pdf::html($html)
-            ->format($paperSize)
-            ->withBrowsershot(static function (Browsershot $browsershot): void {
-                BrowsershotConfiguration::apply($browsershot);
-            })
-            ->generatePdfContent();
+        // Warm-Chrome sidecar first (sub-0.14s when running), Browsershot
+        // as the always-working fallback. See WarmChromePdfRenderer.
+        $pdfBytes = WarmChromePdfRenderer::render($html, $paperSize)
+            ?? Pdf::html($html)
+                ->format($paperSize)
+                ->withBrowsershot(static function (Browsershot $browsershot): void {
+                    BrowsershotConfiguration::apply($browsershot);
+                })
+                ->generatePdfContent();
 
         // We already have the complete PDF in memory at this point (unlike
         // the Excel export, which genuinely streams row-by-row without ever

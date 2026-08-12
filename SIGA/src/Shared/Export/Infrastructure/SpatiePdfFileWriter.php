@@ -21,6 +21,16 @@ final class SpatiePdfFileWriter implements PdfFileWriterInterface
 {
     public function write(string $html, string $absolutePath, string $paperSize = 'a4'): void
     {
+        // Same warm-Chrome fast path as SpatiePdfExporter, same fallback —
+        // a saved report stays identical to a streamed one either way.
+        $pdfBytes = WarmChromePdfRenderer::render($html, $paperSize);
+
+        if ($pdfBytes !== null) {
+            file_put_contents($absolutePath, $pdfBytes);
+
+            return;
+        }
+
         Pdf::html($html)
             ->format($paperSize)
             ->withBrowsershot(static function (Browsershot $browsershot): void {
