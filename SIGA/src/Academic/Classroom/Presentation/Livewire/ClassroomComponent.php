@@ -137,7 +137,7 @@ class ClassroomComponent extends Component
             ? $this->renderServerMode($useCase)
             : $this->renderClientMode($useCase, $this->isFirstRender());
 
-        /** @disregard P1013 Livewire registra ->layout() como macro en runtime sobre Illuminate\View\View */
+        /** @disregard P1013 Livewire registers ->layout() as a runtime macro on Illuminate\View\View */
         return $view->layout('components.layouts.dashboard', [
             'title' => __('Classrooms'),
             'subtitle' => __('Available physical spaces by campus'),

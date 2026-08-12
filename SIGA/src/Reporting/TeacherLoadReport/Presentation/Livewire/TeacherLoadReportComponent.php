@@ -117,7 +117,7 @@ class TeacherLoadReportComponent extends Component
             'legend' => $this->legend(),
         ]);
 
-        /** @disregard P1013 Livewire registra ->layout() como macro en runtime sobre Illuminate\View\View */
+        /** @disregard P1013 Livewire registers ->layout() as a runtime macro on Illuminate\View\View */
         return $view->layout('components.layouts.dashboard', [
             'title' => __('Teacher load report'),
             'subtitle' => __('Accumulated workload of a teacher against their reference workload'),

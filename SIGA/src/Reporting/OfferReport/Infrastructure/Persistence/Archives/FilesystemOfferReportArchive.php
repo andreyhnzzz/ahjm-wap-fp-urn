@@ -18,9 +18,9 @@ use Src\Shared\Export\Contracts\PdfFileWriterInterface;
  * them again.
  *
  * Both formats are produced from the same in-memory rows in the same
- * call, which is what makes RE-01's "misma información en ambos
- * archivos" true by construction rather than by convention — there is no
- * second query between them that could see different data.
+ * call, which is what makes RE-01's "same information in both files"
+ * true by construction rather than by convention — there is no second
+ * query between them that could see different data.
  *
  * File names are derived from the term, so re-generating a term
  * overwrites its own pair instead of accumulating one more copy per
