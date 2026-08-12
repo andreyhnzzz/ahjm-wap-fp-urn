@@ -21,7 +21,6 @@ use Src\IdentityAccess\Role\Application\UseCases\FindRoleUseCase;
 use Src\IdentityAccess\Role\Application\UseCases\ListRolesUseCase;
 use Src\IdentityAccess\Role\Application\UseCases\UpdateRoleUseCase;
 use Src\IdentityAccess\Role\Domain\Entities\Role;
-use Src\IdentityAccess\Role\Domain\Exceptions\RoleIsProtectedException;
 use Src\IdentityAccess\Role\Presentation\Livewire\Forms\RoleForm;
 use Src\Shared\Export\Contracts\ExcelExporterInterface;
 use Src\Shared\Export\Contracts\PdfExporterInterface;
@@ -88,24 +87,29 @@ class RoleComponent extends Component
     {
         $this->form->validate();
 
-        try {
-            if ($this->editingId === null) {
-                $this->authorize('create', Role::class);
-                $createUseCase->handle($this->form->toDto());
-            } else {
-                // RolePolicy::update() needs an actual Role instance as
-                // its 2nd parameter (it checks per-row rules, not just
-                // "can this user edit roles in general") — Role::class
-                // alone isn't enough for Laravel to call it, hence
-                // fetching the entity first instead of authorizing
-                // against the bare class string.
-                $this->authorize('update', $findUseCase->handle($this->editingId));
-                $updateUseCase->handle($this->editingId, $this->form->toDto());
-            }
-        } catch (RoleIsProtectedException $e) {
-            $this->dispatch('toast', variant: 'danger', text: $e->getMessage());
+        if ($this->editingId === null) {
+            $this->authorize('create', Role::class);
+            $createUseCase->handle($this->form->toDto());
+        } else {
+            // RolePolicy::update() needs an actual Role instance as its
+            // 2nd parameter (it checks per-row rules, not just "can this
+            // user edit roles in general") — Role::class alone isn't
+            // enough for Laravel to call it, hence fetching the entity
+            // first instead of authorizing against the bare class string.
+            $role = $findUseCase->handle($this->editingId);
+            $this->authorize('update', $role);
 
-            return;
+            // A protected role rejecting a rename is an expected outcome
+            // of a normal click, not an exceptional one, so it is checked
+            // up front rather than caught. The use case still enforces the
+            // same rule for callers that are not this screen.
+            if ($role->isProtected() && $this->form->name !== $role->name()) {
+                $this->dispatch('toast', variant: 'danger', text: __('A system role cannot be renamed.'));
+
+                return;
+            }
+
+            $updateUseCase->handle($this->editingId, $this->form->toDto());
         }
 
         $this->showModal = false;
@@ -119,15 +123,16 @@ class RoleComponent extends Component
     {
         // Same reasoning as save()'s update branch: RolePolicy::delete()
         // requires an actual Role instance, not the class string.
-        $this->authorize('delete', $findUseCase->handle($id));
+        $role = $findUseCase->handle($id);
+        $this->authorize('delete', $role);
 
-        try {
-            $useCase->handle($id);
-        } catch (RoleIsProtectedException $e) {
-            $this->dispatch('toast', variant: 'danger', text: $e->getMessage());
+        if ($role->isProtected()) {
+            $this->dispatch('toast', variant: 'danger', text: __('A system role cannot be deleted.'));
 
             return;
         }
+
+        $useCase->handle($id);
 
         $this->refreshTable($this->freshRows($listUseCase));
         $this->dispatch('toast', variant: 'success', text: __('Role deleted.'));
@@ -173,7 +178,7 @@ class RoleComponent extends Component
         // or the checklist would empty out the moment any modal reopens.
         $view = $view->with('permissionCatalog', $this->permissionCatalog($permissionsUseCase));
 
-        /** @disregard P1013 Livewire registra ->layout() como macro en runtime sobre Illuminate\View\View */
+        /** @disregard P1013 Livewire registers ->layout() as a runtime macro on Illuminate\View\View */
         return $view->layout('components.layouts.dashboard', [
             'title' => __('Roles'),
             'subtitle' => __('System user roles management'),
