@@ -5,6 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
+        "pdf:sidecar": "node scripts/pdf-sidecar.mjs",
         "types:check": "tsc"
     },
     "dependencies": {
