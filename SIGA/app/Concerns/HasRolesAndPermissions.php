@@ -9,9 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
- * Spatie-inspired, dependency-free Role & Permission behavior for User.
- * Supports permissions inherited through roles AND permissions granted
- * directly to a user, mirroring laravel-permission's public API surface.
+ * Dependency-free Role & Permission behavior for User, covering both
+ * permissions inherited through a role and permissions granted directly.
  *
  * @mixin Model
  *
@@ -20,6 +19,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 trait HasRolesAndPermissions
 {
+    /**
+     * Flattened "permission name => true" lookup, built once per request.
+     * Null until the first check forces it to load.
+     *
+     * @var array<string, true>|null
+     */
+    private ?array $permissionNameSet = null;
+
     /**
      * @return BelongsToMany<Role, $this>
      */
@@ -41,68 +48,39 @@ trait HasRolesAndPermissions
         return $this->roles->contains('name', $role);
     }
 
-    /**
-     * @param  array<int, string>  $roles
-     */
-    public function hasAnyRole(array $roles): bool
-    {
-        return $this->roles->pluck('name')->intersect($roles)->isNotEmpty();
-    }
-
-    public function assignRole(string ...$roles): void
-    {
-        $ids = Role::query()->whereIn('name', $roles)->pluck('id');
-        $this->roles()->syncWithoutDetaching($ids);
-    }
-
-    /**
-     * @param  array<int, string>  $roles
-     */
-    public function syncRoles(array $roles): void
-    {
-        $ids = Role::query()->whereIn('name', $roles)->pluck('id');
-        $this->roles()->sync($ids);
-    }
-
-    public function givePermissionTo(string ...$permissions): void
-    {
-        $ids = Permission::query()->whereIn('name', $permissions)->pluck('id');
-        $this->permissions()->syncWithoutDetaching($ids);
-    }
-
-    public function revokePermissionTo(string ...$permissions): void
-    {
-        $ids = Permission::query()->whereIn('name', $permissions)->pluck('id');
-        $this->permissions()->detach($ids);
-    }
-
-    public function hasDirectPermission(string $permission): bool
-    {
-        return $this->permissions->contains('name', $permission);
-    }
-
     public function hasPermissionTo(string $permission): bool
     {
-        if ($this->hasDirectPermission($permission)) {
-            return true;
-        }
-
-        return $this->roles->contains(
-            fn (Role $role) => $role->permissions->contains('name', $permission)
-        );
+        return isset($this->permissionNameSet()[$permission]);
     }
 
     /**
-     * @param  array<int, string>  $permissions
+     * Every permission the user holds, granted directly or inherited
+     * through a role, as an O(1) lookup set.
+     *
+     * A page renders one @can per sidebar entry plus one per row action,
+     * so this is read tens of times per request. Resolving it per check
+     * meant one query per role and a nested collection scan every time;
+     * both relations are loaded here in a single pass instead, and the
+     * flattened result is reused for the rest of the request.
+     *
+     * @return array<string, true>
      */
-    public function hasAnyPermission(array $permissions): bool
+    private function permissionNameSet(): array
     {
-        foreach ($permissions as $permission) {
-            if ($this->hasPermissionTo($permission)) {
-                return true;
+        if ($this->permissionNameSet !== null) {
+            return $this->permissionNameSet;
+        }
+
+        $this->loadMissing(['permissions:id,name', 'roles.permissions:id,name']);
+
+        $names = $this->permissions->pluck('name')->all();
+
+        foreach ($this->roles as $role) {
+            foreach ($role->permissions as $permission) {
+                $names[] = $permission->name;
             }
         }
 
-        return false;
+        return $this->permissionNameSet = array_fill_keys($names, true);
     }
 }
