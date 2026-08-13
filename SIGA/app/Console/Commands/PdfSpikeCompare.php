@@ -274,6 +274,8 @@ class PdfSpikeCompare extends Command
      */
     private function captureHtml(string $componentClass): string
     {
+        \Illuminate\Support\Facades\Queue::fake([GenerateReportExportJob::class]);
+
         $box = new \stdClass();
         $box->html = null;
 
