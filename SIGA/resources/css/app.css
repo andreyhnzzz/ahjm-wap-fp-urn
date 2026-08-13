@@ -556,7 +556,7 @@ select:focus[data-flux-control] {
     padding: 26px 28px 40px;
   }
   .blank-panel {
-    background: #ffffff;
+    background: var(--cardBg);
     border-radius: 14px;
     min-height: 60vh;
   }

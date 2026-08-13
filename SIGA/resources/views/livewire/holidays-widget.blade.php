@@ -1,6 +1,6 @@
 @use('Illuminate\Support\Carbon')
 
-<div class="space-y-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
+<div class="space-y-3 rounded-lg p-4" style="background: var(--cardBg); border: 1px solid var(--border);">
     <flux:heading size="sm">{{ __('Upcoming public holidays') }}</flux:heading>
 
     @if (empty($holidays))
@@ -10,7 +10,7 @@
             @foreach ($holidays as $holiday)
                 <li class="flex justify-between text-sm">
                     <span>{{ $holiday['name'] }}</span>
-                    <span class="text-zinc-500 dark:text-zinc-400">{{ Carbon::parse($holiday['date'])->translatedFormat('d M Y') }}</span>
+                    <span style="color: var(--textSecondary);">{{ Carbon::parse($holiday['date'])->translatedFormat('d M Y') }}</span>
                 </li>
             @endforeach
         </ul>
