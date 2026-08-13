@@ -41,7 +41,7 @@ class AcademicDataSeeder extends Seeder
      * classrooms. Written with updateOrCreate() like everything else, so
      * re-seeding stays at 2500 rows instead of growing every run.
      */
-    private const BULK_GROUP_COUNT = 1500;
+    private const BULK_GROUP_COUNT = 2500;
 
     private const BULK_TEACHER_COUNT = 50;
 
