@@ -89,9 +89,13 @@ final class BrowsershotConfiguration
     ];
 
     /**
-     * Seconds before Browsershot gives up on Chrome.
+     * Seconds before Browsershot gives up on Chrome. 30, not 15: a
+     * 1500+ row export (Groups) measured at 17-19s end to end (see the
+     * mPDF/Dompdf/Spatie spike) — 15s was cutting those off. Exports now
+     * run as a queued job (GenerateReportExportJob), so this only has
+     * to survive the render, never a user's page load.
      */
-    private const TIMEOUT = 15;
+    private const TIMEOUT = 30;
 
     public static function apply(Browsershot $browsershot): void
     {

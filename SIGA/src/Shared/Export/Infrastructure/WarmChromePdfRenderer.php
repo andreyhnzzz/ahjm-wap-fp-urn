@@ -29,8 +29,14 @@ final class WarmChromePdfRenderer
     public static function render(string $html, string $paperSize): ?string
     {
         try {
+            // 30s, not the typical-case ~0.14s above: a 1500+ row export
+            // (Groups) measured at 17-19s end to end (see the mPDF/Dompdf/
+            // Spatie spike) — a 15s cap was cutting those off and silently
+            // falling back to the slower Browsershot path. Now runs as a
+            // queued job (GenerateReportExportJob) regardless, so this
+            // only has to survive the render, not a user's page load.
             $response = Http::connectTimeout(1)
-                ->timeout(15)
+                ->timeout(30)
                 ->post(self::ENDPOINT, ['html' => $html, 'format' => $paperSize]);
         } catch (ConnectionException) {
             return null;
