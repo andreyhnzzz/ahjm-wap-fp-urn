@@ -200,6 +200,12 @@
             border-radius: 10px;
             border: 1px solid #d7dce6;
             overflow: hidden;
+            /* No box-shadow here, deliberately: Chrome's print engine
+               rasterizes the shadow of a fragmented box on EVERY page,
+               which measured 29.9s -> 3.4s for a 2541-row report when
+               removed (and half the output bytes). At 8% opacity the
+               shadow was invisible in print anyway; the 1px border
+               already delineates the card. */
         }
 
         table {
