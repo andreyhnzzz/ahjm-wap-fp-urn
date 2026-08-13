@@ -276,9 +276,6 @@ class PdfSpikeCompare extends Command
     {
         \Illuminate\Support\Facades\Queue::fake([GenerateReportExportJob::class]);
 
-        $box = new \stdClass();
-        $box->html = null;
-
         $component = app()->make($componentClass);
         app()->call([$component, 'mount']);
         app()->call([$component, 'exportPdf']);
@@ -294,7 +291,11 @@ class PdfSpikeCompare extends Command
             throw new \RuntimeException("exportPdf on {$componentClass} never queued the export job");
         }
 
-        return $box->html;
+        return view('exports.table-pdf', [
+            'title' => $job->title,
+            'headers' => $job->headers,
+            'rows' => $job->rows,
+        ])->render();
     }
 
     private function actingAsSuperadmin(): void
