@@ -200,7 +200,6 @@
             border-radius: 10px;
             border: 1px solid #d7dce6;
             overflow: hidden;
-            box-shadow: 0 4px 18px rgba(15, 37, 71, 0.08);
         }
 
         table {
