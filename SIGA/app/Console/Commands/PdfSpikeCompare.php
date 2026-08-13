@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Jobs\GenerateReportExportJob;
 use App\Models\Permission;
 use App\Models\Role as RoleModel;
 use App\Models\User;
