@@ -22,9 +22,6 @@ use Src\IdentityAccess\Role\Application\UseCases\ListRolesUseCase;
 use Src\IdentityAccess\Role\Application\UseCases\UpdateRoleUseCase;
 use Src\IdentityAccess\Role\Domain\Entities\Role;
 use Src\IdentityAccess\Role\Presentation\Livewire\Forms\RoleForm;
-use Src\Shared\Export\Contracts\ExcelExporterInterface;
-use Src\Shared\Export\Contracts\PdfExporterInterface;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RoleComponent extends Component
 {
@@ -138,30 +135,38 @@ class RoleComponent extends Component
         $this->dispatch('toast', variant: 'success', text: __('Role deleted.'));
     }
 
-    public function exportPdf(PdfExporterInterface $exporter, ListRolesUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportPdf(ListRolesUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportPdf', Role::class);
 
-        return $this->streamPdf(
+        $this->queuePdfExport(
             __('Roles'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Roles')).'.pdf',
-            $exporter,
             paperSize: 'letter',
         );
+
+        // Every commit after the component's first render sends
+        // rows: [] (see renderClientMode()) and relies on refreshTable()
+        // to repair Alpine's live state — queuing an export is just
+        // another action/render cycle like save() or delete(), so it
+        // needs the same repair or the table goes empty until reload.
+        $this->refreshTable($this->freshRows($useCase));
     }
 
-    public function exportExcel(ExcelExporterInterface $exporter, ListRolesUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportExcel(ListRolesUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportExcel', Role::class);
 
-        return $this->streamExcel(
+        $this->queueExcelExport(
+            __('Roles'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Roles')).'.xlsx',
-            $exporter,
         );
+
+        $this->refreshTable($this->freshRows($useCase));
     }
 
     public function render(ListRolesUseCase $useCase, ListPermissionsUseCase $permissionsUseCase): View

@@ -19,9 +19,6 @@ use Src\IdentityAccess\Permission\Application\UseCases\ListPermissionsUseCase;
 use Src\IdentityAccess\Permission\Application\UseCases\UpdatePermissionUseCase;
 use Src\IdentityAccess\Permission\Domain\Entities\Permission;
 use Src\IdentityAccess\Permission\Presentation\Livewire\Forms\PermissionForm;
-use Src\Shared\Export\Contracts\ExcelExporterInterface;
-use Src\Shared\Export\Contracts\PdfExporterInterface;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PermissionComponent extends Component
 {
@@ -108,30 +105,36 @@ class PermissionComponent extends Component
         $this->dispatch('toast', variant: 'success', text: __('Permission deleted.'));
     }
 
-    public function exportPdf(PdfExporterInterface $exporter, ListPermissionsUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportPdf(ListPermissionsUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportPdf', Permission::class);
 
-        return $this->streamPdf(
+        $this->queuePdfExport(
             __('Permissions'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Permissions')).'.pdf',
-            $exporter,
             paperSize: 'letter',
         );
+
+        // See RoleComponent::exportPdf() — without this, rows stays at
+        // the [] every post-first-render commit sends, and the table
+        // goes empty until a full reload.
+        $this->refreshTable($this->freshRows($useCase));
     }
 
-    public function exportExcel(ExcelExporterInterface $exporter, ListPermissionsUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportExcel(ListPermissionsUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportExcel', Permission::class);
 
-        return $this->streamExcel(
+        $this->queueExcelExport(
+            __('Permissions'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Permissions')).'.xlsx',
-            $exporter,
         );
+
+        $this->refreshTable($this->freshRows($useCase));
     }
 
     public function render(ListPermissionsUseCase $useCase): View
