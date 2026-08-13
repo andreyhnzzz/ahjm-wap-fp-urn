@@ -20,7 +20,7 @@ use Src\Academic\Group\Domain\ValueObjects\Modality;
  *
  * Idempotent: every row is written with updateOrCreate() on its natural
  * key, so running the seeder twice leaves the same row count rather than
- * doubling it (41 scenario/filler/previous-term groups + 1500 bulk
+ * doubling it (41 scenario/filler/previous-term groups + 2500 bulk
  * volume groups, see BULK_GROUP_COUNT).
  *
  * The scenario block below is designed so the dataset contains at least
