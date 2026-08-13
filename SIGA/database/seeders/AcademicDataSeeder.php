@@ -39,7 +39,7 @@ class AcademicDataSeeder extends Seeder
      * identity cards) so it never touches the workload totals the
      * scenario's RE-04/RE-02 comments depend on, but reuses the existing
      * classrooms. Written with updateOrCreate() like everything else, so
-     * re-seeding stays at 1500 rows instead of growing every run.
+     * re-seeding stays at 2500 rows instead of growing every run.
      */
     private const BULK_GROUP_COUNT = 1500;
 
