@@ -279,20 +279,6 @@ class PdfSpikeCompare extends Command
         $box = new \stdClass();
         $box->html = null;
 
-        app()->bind(PdfExporterInterface::class, function () use ($box) {
-            return new class($box) implements PdfExporterInterface
-            {
-                public function __construct(private \stdClass $box) {}
-
-                public function fromHtml(string $html, string $filename, string $paperSize = 'a4'): StreamedResponse
-                {
-                    $this->box->html = $html;
-
-                    return new StreamedResponse(fn () => null);
-                }
-            };
-        });
-
         $component = app()->make($componentClass);
         app()->call([$component, 'mount']);
         app()->call([$component, 'exportPdf']);
