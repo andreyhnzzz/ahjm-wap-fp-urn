@@ -31,6 +31,7 @@
         :can-search="Auth::user()->can('search', \Src\Academic\Teacher\Domain\Entities\Teacher::class)"
         :can-export-pdf="Auth::user()->can('exportPdf', \Src\Academic\Teacher\Domain\Entities\Teacher::class)"
         :can-export-excel="Auth::user()->can('exportExcel', \Src\Academic\Teacher\Domain\Entities\Teacher::class)"
+        :active-export-id="$activeExportId"
         :title="__('Teachers management')">
 
         @if ($tableMode === 'client')

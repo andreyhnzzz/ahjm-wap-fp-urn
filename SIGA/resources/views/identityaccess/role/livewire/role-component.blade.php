@@ -30,6 +30,7 @@
         :can-search="Auth::user()->can('search', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
         :can-export-pdf="Auth::user()->can('exportPdf', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
         :can-export-excel="Auth::user()->can('exportExcel', \Src\IdentityAccess\Role\Domain\Entities\Role::class)"
+        :active-export-id="$activeExportId"
         :title="__('Roles management')">
 
         @if ($tableMode === 'client')

@@ -30,6 +30,7 @@
         :can-search="Auth::user()->can('search', \Src\Academic\Classroom\Domain\Entities\Classroom::class)"
         :can-export-pdf="Auth::user()->can('exportPdf', \Src\Academic\Classroom\Domain\Entities\Classroom::class)"
         :can-export-excel="Auth::user()->can('exportExcel', \Src\Academic\Classroom\Domain\Entities\Classroom::class)"
+        :active-export-id="$activeExportId"
         :title="__('Classrooms management')">
 
         @if ($tableMode === 'client')

@@ -42,6 +42,7 @@
         :can-search="Auth::user()->can('search', \Src\Academic\Group\Domain\Entities\Group::class)"
         :can-export-pdf="Auth::user()->can('exportPdf', \Src\Academic\Group\Domain\Entities\Group::class)"
         :can-export-excel="Auth::user()->can('exportExcel', \Src\Academic\Group\Domain\Entities\Group::class)"
+        :active-export-id="$activeExportId"
         :title="__('Groups management')">
 
         @if ($tableMode === 'client')

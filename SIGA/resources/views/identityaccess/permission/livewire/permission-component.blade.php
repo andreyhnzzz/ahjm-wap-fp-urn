@@ -30,6 +30,7 @@
         :can-search="Auth::user()->can('search', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
         :can-export-pdf="Auth::user()->can('exportPdf', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
         :can-export-excel="Auth::user()->can('exportExcel', \Src\IdentityAccess\Permission\Domain\Entities\Permission::class)"
+        :active-export-id="$activeExportId"
         :title="__('Permissions management')">
 
         @if ($tableMode === 'client')
