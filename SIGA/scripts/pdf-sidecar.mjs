@@ -63,7 +63,7 @@ http.createServer((req, res) => {
                 // see table-pdf.blade.php) so 'load' fires immediately —
                 // never wait on networkidle here, it costs 500ms flat.
                 await page.setContent(html, { waitUntil: 'load' });
-                const pdf = await page.pdf({ format, printBackground: true });
+                const pdf = await page.pdf({ format, printBackground: true, timeout: 60_000 });
                 res.writeHead(200, { 'Content-Type': 'application/pdf' }).end(pdf);
             } catch (error) {
                 res.writeHead(500).end(String(error));
