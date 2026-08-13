@@ -19,8 +19,9 @@ use Src\Academic\Group\Domain\ValueObjects\Modality;
  * as "different random data this time".
  *
  * Idempotent: every row is written with updateOrCreate() on its natural
- * key, so running the seeder twice leaves the same 40 groups rather than
- * 80.
+ * key, so running the seeder twice leaves the same row count rather than
+ * doubling it (41 scenario/filler/previous-term groups + 1500 bulk
+ * volume groups, see BULK_GROUP_COUNT).
  *
  * The scenario block below is designed so the dataset contains at least
  * one case of every risk RE-04 defines and every alert colour RE-02 can
@@ -31,6 +32,18 @@ class AcademicDataSeeder extends Seeder
     private const CURRENT_TERM = '2026-II';
 
     private const PREVIOUS_TERM = '2026-I';
+
+    /**
+     * Volume filler for pagination/report load testing, on top of the
+     * hand-written scenario above. Uses its own teacher pool (BULK-####
+     * identity cards) so it never touches the workload totals the
+     * scenario's RE-04/RE-02 comments depend on, but reuses the existing
+     * classrooms. Written with updateOrCreate() like everything else, so
+     * re-seeding stays at 1500 rows instead of growing every run.
+     */
+    private const BULK_GROUP_COUNT = 1500;
+
+    private const BULK_TEACHER_COUNT = 50;
 
     /**
      * [identity card, name, reference workload]
@@ -132,6 +145,9 @@ class AcademicDataSeeder extends Seeder
         $this->seedScenarioGroups($teachers, $classrooms);
         $this->seedFillerGroups($teachers, $classrooms);
         $this->seedPreviousTermGroups($teachers, $classrooms);
+
+        $bulkTeachers = $this->seedBulkTeachers();
+        $this->seedBulkGroups($bulkTeachers, $classrooms);
     }
 
     /**
@@ -252,6 +268,47 @@ class AcademicDataSeeder extends Seeder
                     status: GroupStatus::Closed,
                 );
             }
+        }
+    }
+
+    /**
+     * @return array<int, Teacher>
+     */
+    private function seedBulkTeachers(): array
+    {
+        $teachers = [];
+
+        for ($i = 1; $i <= self::BULK_TEACHER_COUNT; $i++) {
+            $teachers[] = Teacher::query()->updateOrCreate(
+                ['identity_card' => sprintf('BULK-%04d', $i)],
+                ['name' => sprintf('Docente Volumen %04d', $i), 'reference_workload' => 1.00],
+            );
+        }
+
+        return $teachers;
+    }
+
+    /**
+     * @param  array<int, Teacher>  $teachers
+     * @param  array<int, Classroom>  $classrooms
+     */
+    private function seedBulkGroups(array $teachers, array $classrooms): void
+    {
+        $courses = [...self::FILLER_COURSES, 'ISW-521', 'ISW-411', 'ISW-311', 'ISW-211', 'ISW-111', 'ADM-101'];
+        $modalities = Modality::cases();
+
+        for ($i = 1; $i <= self::BULK_GROUP_COUNT; $i++) {
+            $this->writeGroup(
+                code: sprintf('BULK-%04d', $i),
+                courseCode: $courses[$i % count($courses)],
+                term: self::CURRENT_TERM,
+                teacher: $teachers[$i % count($teachers)],
+                classroom: $classrooms[$i % count($classrooms)],
+                enrollment: 8 + ($i % 33),
+                workload: 0.25,
+                modality: $modalities[$i % count($modalities)],
+                status: GroupStatus::Open,
+            );
         }
     }
 
