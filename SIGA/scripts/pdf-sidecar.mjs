@@ -63,6 +63,11 @@ http.createServer((req, res) => {
                 // see table-pdf.blade.php) so 'load' fires immediately —
                 // never wait on networkidle here, it costs 500ms flat.
                 await page.setContent(html, { waitUntil: 'load' });
+                // Explicit timeout: puppeteer's page.pdf() defaults to 30s,
+                // and a multi-thousand-row report near that edge turns into
+                // an intermittent 500 instead of a slow success. 60s gives
+                // the same headroom BrowsershotConfiguration's 30s PHP-side
+                // cap effectively enforces anyway (PHP gives up first).
                 const pdf = await page.pdf({ format, printBackground: true, timeout: 60_000 });
                 res.writeHead(200, { 'Content-Type': 'application/pdf' }).end(pdf);
             } catch (error) {
