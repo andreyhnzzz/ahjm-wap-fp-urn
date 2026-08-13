@@ -283,6 +283,13 @@ class PdfSpikeCompare extends Command
         app()->call([$component, 'mount']);
         app()->call([$component, 'exportPdf']);
 
+        $job = null;
+        \Illuminate\Support\Facades\Queue::assertPushed(GenerateReportExportJob::class, function (GenerateReportExportJob $pushed) use (&$job): bool {
+            $job = $pushed;
+
+            return true;
+        });
+
         app()->forgetInstance(PdfExporterInterface::class);
 
         if ($box->html === null) {
