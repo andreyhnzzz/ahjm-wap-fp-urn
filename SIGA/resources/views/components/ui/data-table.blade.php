@@ -12,6 +12,7 @@
 'canSearch' => true,
 'canExportPdf' => false,
 'canExportExcel' => false,
+'activeExportId' => null,
 'title' => '',
 'tableCols' => '1fr',
 'createAction' => "\$wire.openCreateModal()",
@@ -91,14 +92,23 @@ if ($lastPage <= 7) {
                     @endif
 
                     @if ($canExport)
-                    <div class="download-wrap" x-data="{ open: false }" x-on:click.outside="open = false">
-                        <button type="button" class="btn btn-primary" @click="open = !open">
+                    <div class="download-wrap" x-data="{ open: false }" x-on:click.outside="open = false"
+                        @if ($activeExportId) wire:poll.1500ms="pollExportStatus" @endif>
+                        <button type="button" class="btn btn-primary" @click="open = !open" @disabled($activeExportId !== null)>
+                            @if ($activeExportId)
+                            <svg class="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="9" stroke-opacity="0.25"></circle>
+                                <path d="M21 12a9 9 0 0 0-9-9"></path>
+                            </svg>
+                            <span>{{ __('Generating…') }}</span>
+                            @else
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
                                 <polyline points="7 10 12 15 17 10"></polyline>
                                 <line x1="12" y1="15" x2="12" y2="3"></line>
                             </svg>
                             <span>{{ __('Download') }}</span>
+                            @endif
                         </button>
                         <div class="download-menu" :class="{ 'open': open }">
                             {{--
@@ -123,7 +133,7 @@ if ($lastPage <= 7) {
                         needed.
                     --}}
                             @if ($canExportPdf)
-                            <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportPdf(search)' : 'exportPdf' }}" x-on:click="open = false">
+                            <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportPdf(search)' : 'exportPdf' }}" wire:target="exportPdf" wire:loading.attr="disabled" x-on:click="open = false">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-red-600" style="color:#DC2626">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                                     <polyline points="14 2 14 8 20 8" />
@@ -138,7 +148,7 @@ if ($lastPage <= 7) {
                             <div class="download-divider"></div>
                             @endif
                             @if ($canExportExcel)
-                            <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportExcel(search)' : 'exportExcel' }}" x-on:click="open = false">
+                            <button type="button" class="download-item" wire:click="{{ $isClient ? 'exportExcel(search)' : 'exportExcel' }}" wire:target="exportExcel" wire:loading.attr="disabled" x-on:click="open = false">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#16A34A">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                                     <polyline points="14 2 14 8 20 8" />

@@ -66,6 +66,23 @@ interface CrudTableComponent {
   $watch(property: string, callback: (value: unknown) => void): void;
 }
 
+// Queued exports (InteractsWithExports::pollExportStatus()) dispatch this
+// once GenerateReportExportJob finishes, carrying the authenticated
+// download URL. Global and Alpine-independent — the export button lives
+// outside crudTable's x-data, and there's only ever one active export per
+// page — so this registers once at module load rather than per component
+// instance.
+window.addEventListener("export-ready", (event) => {
+  const { url, filename } = (event as CustomEvent<{ url: string; filename: string }>).detail;
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+});
+
 document.addEventListener("alpine:init", () => {
   Alpine.data("crudTable", (config: CrudTableConfig = {}): CrudTableComponent => ({
     // ---- state -----------------------------------------------------
