@@ -290,8 +290,6 @@ class PdfSpikeCompare extends Command
             return true;
         });
 
-        app()->forgetInstance(PdfExporterInterface::class);
-
         if ($box->html === null) {
             throw new \RuntimeException("exportPdf on {$componentClass} never called the exporter");
         }
