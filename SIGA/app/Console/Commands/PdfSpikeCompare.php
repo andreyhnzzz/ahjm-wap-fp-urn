@@ -15,7 +15,6 @@ use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Facades\Pdf;
 use Src\Academic\Group\Presentation\Livewire\GroupComponent;
 use Src\IdentityAccess\Role\Presentation\Livewire\RoleComponent;
-use Src\Shared\Export\Contracts\PdfExporterInterface;
 use Src\Shared\Export\Infrastructure\BrowsershotConfiguration;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
