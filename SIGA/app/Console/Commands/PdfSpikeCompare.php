@@ -266,9 +266,11 @@ class PdfSpikeCompare extends Command
     }
 
     /**
-     * Binds a capturing fake PdfExporterInterface, calls the real
-     * component's exportPdf() (same authorize()/use-case/row-mapping code
-     * path production uses), and returns the exact HTML it built.
+     * Calls the real component's exportPdf() (same authorize()/use-case/
+     * row-mapping code path production uses) with the queue faked,
+     * grabs the dispatched GenerateReportExportJob's payload, and renders
+     * the same view the job renders — the exact HTML production's worker
+     * hands to Chrome.
      */
     private function captureHtml(string $componentClass): string
     {
