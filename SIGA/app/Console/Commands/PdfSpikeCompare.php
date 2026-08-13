@@ -290,8 +290,8 @@ class PdfSpikeCompare extends Command
             return true;
         });
 
-        if ($box->html === null) {
-            throw new \RuntimeException("exportPdf on {$componentClass} never called the exporter");
+        if ($job === null) {
+            throw new \RuntimeException("exportPdf on {$componentClass} never queued the export job");
         }
 
         return $box->html;
