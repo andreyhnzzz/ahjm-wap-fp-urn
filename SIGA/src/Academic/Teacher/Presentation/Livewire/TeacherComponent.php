@@ -19,9 +19,6 @@ use Src\Academic\Teacher\Application\UseCases\ListTeachersUseCase;
 use Src\Academic\Teacher\Application\UseCases\UpdateTeacherUseCase;
 use Src\Academic\Teacher\Domain\Entities\Teacher;
 use Src\Academic\Teacher\Presentation\Livewire\Forms\TeacherForm;
-use Src\Shared\Export\Contracts\ExcelExporterInterface;
-use Src\Shared\Export\Contracts\PdfExporterInterface;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Primary adapter (Hexagonal) for the Teacher module: it translates user
@@ -123,30 +120,36 @@ class TeacherComponent extends Component
         $this->dispatch('toast', variant: 'success', text: __('Teacher deleted.'));
     }
 
-    public function exportPdf(PdfExporterInterface $exporter, ListTeachersUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportPdf(ListTeachersUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportPdf', Teacher::class);
 
-        return $this->streamPdf(
+        $this->queuePdfExport(
             __('Teachers'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Teachers')).'.pdf',
-            $exporter,
             paperSize: 'letter',
         );
+
+        // See RoleComponent::exportPdf() — without this, rows stays at
+        // the [] every post-first-render commit sends, and the table
+        // goes empty until a full reload.
+        $this->refreshTable($this->freshRows($useCase));
     }
 
-    public function exportExcel(ExcelExporterInterface $exporter, ListTeachersUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportExcel(ListTeachersUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportExcel', Teacher::class);
 
-        return $this->streamExcel(
+        $this->queueExcelExport(
+            __('Teachers'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Teachers')).'.xlsx',
-            $exporter,
         );
+
+        $this->refreshTable($this->freshRows($useCase));
     }
 
     public function render(ListTeachersUseCase $useCase): View

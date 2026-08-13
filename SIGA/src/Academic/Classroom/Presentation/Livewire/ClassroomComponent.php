@@ -19,9 +19,6 @@ use Src\Academic\Classroom\Application\UseCases\ListClassroomsUseCase;
 use Src\Academic\Classroom\Application\UseCases\UpdateClassroomUseCase;
 use Src\Academic\Classroom\Domain\Entities\Classroom;
 use Src\Academic\Classroom\Presentation\Livewire\Forms\ClassroomForm;
-use Src\Shared\Export\Contracts\ExcelExporterInterface;
-use Src\Shared\Export\Contracts\PdfExporterInterface;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Primary adapter for the Classroom module — the "lista de aulas y sus
@@ -105,30 +102,36 @@ class ClassroomComponent extends Component
         $this->dispatch('toast', variant: 'success', text: __('Classroom deleted.'));
     }
 
-    public function exportPdf(PdfExporterInterface $exporter, ListClassroomsUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportPdf(ListClassroomsUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportPdf', Classroom::class);
 
-        return $this->streamPdf(
+        $this->queuePdfExport(
             __('Classrooms'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Classrooms')).'.pdf',
-            $exporter,
             paperSize: 'letter',
         );
+
+        // See RoleComponent::exportPdf() — without this, rows stays at
+        // the [] every post-first-render commit sends, and the table
+        // goes empty until a full reload.
+        $this->refreshTable($this->freshRows($useCase));
     }
 
-    public function exportExcel(ExcelExporterInterface $exporter, ListClassroomsUseCase $useCase, ?string $search = null): StreamedResponse
+    public function exportExcel(ListClassroomsUseCase $useCase, ?string $search = null): void
     {
         $this->authorize('exportExcel', Classroom::class);
 
-        return $this->streamExcel(
+        $this->queueExcelExport(
+            __('Classrooms'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $search),
             Str::slug(__('Classrooms')).'.xlsx',
-            $exporter,
         );
+
+        $this->refreshTable($this->freshRows($useCase));
     }
 
     public function render(ListClassroomsUseCase $useCase): View

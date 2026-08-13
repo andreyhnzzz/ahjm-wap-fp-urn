@@ -24,9 +24,6 @@ use Src\Academic\Group\Presentation\Livewire\Forms\GroupForm;
 use Src\Academic\Group\Presentation\Support\GroupLabelFormatter;
 use Src\Academic\Teacher\Application\UseCases\ListTeachersUseCase;
 use Src\Academic\Teacher\Domain\Entities\Teacher;
-use Src\Shared\Export\Contracts\ExcelExporterInterface;
-use Src\Shared\Export\Contracts\PdfExporterInterface;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Primary adapter for the Group module.
@@ -151,39 +148,43 @@ class GroupComponent extends Component
     }
 
     public function exportPdf(
-        PdfExporterInterface $exporter,
         ListGroupsUseCase $useCase,
         ListTeachersUseCase $teachersUseCase,
         ListClassroomsUseCase $classroomsUseCase,
         ?string $search = null,
-    ): StreamedResponse {
+    ): void {
         $this->authorize('exportPdf', Group::class);
 
-        return $this->streamPdf(
+        $this->queuePdfExport(
             __('Groups'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $teachersUseCase, $classroomsUseCase, $search),
             Str::slug(__('Groups')).'.pdf',
-            $exporter,
             paperSize: 'letter',
         );
+
+        // See RoleComponent::exportPdf() — without this, rows stays at
+        // the [] every post-first-render commit sends, and the table
+        // goes empty until a full reload.
+        $this->refreshTable($this->freshRows($useCase, $teachersUseCase, $classroomsUseCase));
     }
 
     public function exportExcel(
-        ExcelExporterInterface $exporter,
         ListGroupsUseCase $useCase,
         ListTeachersUseCase $teachersUseCase,
         ListClassroomsUseCase $classroomsUseCase,
         ?string $search = null,
-    ): StreamedResponse {
+    ): void {
         $this->authorize('exportExcel', Group::class);
 
-        return $this->streamExcel(
+        $this->queueExcelExport(
+            __('Groups'),
             $this->exportHeaders(),
             $this->exportableRows($useCase, $teachersUseCase, $classroomsUseCase, $search),
             Str::slug(__('Groups')).'.xlsx',
-            $exporter,
         );
+
+        $this->refreshTable($this->freshRows($useCase, $teachersUseCase, $classroomsUseCase));
     }
 
     public function render(
