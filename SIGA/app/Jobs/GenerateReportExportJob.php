@@ -12,6 +12,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
 use Src\Shared\Export\Contracts\PdfFileWriterInterface;
 use Throwable;
@@ -71,6 +72,8 @@ class GenerateReportExportJob implements ShouldQueue
         $absolutePath = $disk->path($relativePath);
 
         if ($this->format === 'pdf') {
+            $this->guardRowCeiling();
+
             $pdfWriter->write(
                 view('exports.table-pdf', [
                     'title' => $this->title,
@@ -85,6 +88,32 @@ class GenerateReportExportJob implements ShouldQueue
         }
 
         $export->update(['status' => ReportExportStatus::Ready, 'file_path' => $relativePath]);
+    }
+
+    /**
+     * Refuses a PDF that Chrome is known to be unable to print, before
+     * spending two minutes discovering it. The ceiling is measured (see
+     * config/exports.php): 15,000 rows renders, 16,000 kills the print
+     * process, and there is no partial output in between — so the honest
+     * response is an immediate, explained failure rather than a long wait
+     * ending in a generic one.
+     *
+     * The message lands in ReportExport::$error_message via failed().
+     * It stays in English like the rest of the code (D-06): the screen
+     * shows its own translated toast and never renders this string.
+     */
+    private function guardRowCeiling(): void
+    {
+        $ceiling = (int) config('exports.pdf.max_rows');
+        $count = count($this->rows);
+
+        if ($count <= $ceiling) {
+            return;
+        }
+
+        throw new RuntimeException(
+            "This report has {$count} rows; PDF export is limited to {$ceiling}. Use the Excel export, which has no such limit.",
+        );
     }
 
     public function failed(?Throwable $exception): void
