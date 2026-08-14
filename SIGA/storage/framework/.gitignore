@@ -3,6 +3,7 @@ config.php
 down
 events.scanned.php
 maintenance.php
+pdf-sidecar.lock
 routes.php
 routes.scanned.php
 schedule-*

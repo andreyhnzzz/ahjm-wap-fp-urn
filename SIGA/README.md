@@ -175,7 +175,57 @@ precisión real de la columna `decimal(4,2)`. Sin eso, `0.35 × 3` da
 `1.0499999999999998` en binario y podría inventar —o perder— un conflicto de
 jornada por ruido de coma flotante.
 
-## 7. ✅ Verificación
+## 7. ⚡ Rendimiento del PDF con volúmenes grandes
+
+Medido con `php artisan pdf:bench`, que recorre las mismas cuatro etapas que un
+export real (payload de la cola → Blade SSR → Chrome → bytes) sobre filas
+sintéticas con las nueve columnas de `/groups`.
+
+| Filas | Antes | Ahora (arranque limpio) | Ahora (proceso ya caliente) | PDF antes → ahora |
+|---|---|---|---|---|
+| 2 500 | 5,0 s | **3,8 s** | **1,9 s** | 9,1 MB → 0,85 MB |
+| 5 000 | 8,8 s | 3,9 s | 3,8 s | 18,2 MB → 1,6 MB |
+| 10 000 | 24,9 s | ~10 s | ~10–15 s | 36,9 MB → 3,2 MB |
+
+Reproducir:
+
+```bash
+php artisan pdf:bench --rows=2500,5000,10000 --runs=3 --breakdown
+```
+
+**Lo que costaba el tiempo no era Chrome ni el CSS.** Chrome emite por defecto un
+PDF etiquetado (árbol de accesibilidad PDF/UA): un objeto `/StructElem` por cada
+`<td>`. En un reporte de 2 500 filas × 9 columnas son **52 519 objetos extra**,
+7,9 MB de los 8,9 MB del archivo más 1 MB de tabla `xref` que sólo existe para
+indexarlos. Apagarlo (`PDF_TAGGED=false`) es la única causa dominante: ×10 menos
+peso y ~35 % menos tiempo. Se documenta el intercambio en `config/exports.php` —
+lo que se pierde es la semántica de tabla para lectores de pantalla, y RE-01 ya
+genera el `.xlsx` con las mismas filas, que es mejor superficie asistiva para
+datos tabulares. El texto del PDF sigue siendo texto real, seleccionable y
+buscable.
+
+Lo que **no** era: se midió y se descartó como ruido el `overflow`/`border-radius`
+de la tarjeta, el rayado `nth-child`, los bordes por celda, partir la tabla en
+tablas pequeñas (la fragmentación de Chrome no era el problema) y el ancho de
+columnas — pasar de 207 a 94 páginas con las mismas filas mejoró sólo un 19 %,
+porque el coste va con las **celdas**, no con las páginas.
+
+**El arranque limpio.** El sidecar (`scripts/pdf-sidecar.mjs`) ya evitaba los
+~2,2 s de arrancar node + puppeteer + Chromium en cada export, pero sólo si
+alguien lo había arrancado. Ahora `composer run dev` lo levanta junto al servidor,
+la cola y vite, y si aun así no hay nada escuchando, la aplicación lo lanza ella
+misma y espera a que responda `/health`. Si no arranca, se cae a Browsershot como
+siempre: el sidecar acelera, nunca es requisito.
+
+**Techo medido.** 15 000 filas se renderizan (22,8 s, 1 155 páginas). **16 000
+fallan**: `Protocol error (Page.printToPDF): Printing failed`. Es un límite de
+Chrome, no de la aplicación, y no degrada — falla en seco. Por eso
+`config('exports.pdf.max_rows')` (12 000 por defecto, con margen porque el límite
+real es contenido total, no número de filas) rechaza el export al instante en vez
+de tardar dos minutos en fallar dos veces. Por encima de eso, el `.xlsx`, que se
+escribe en streaming y no tiene techo comparable.
+
+## 8. ✅ Verificación
 
 ```bash
 composer run test
@@ -192,7 +242,7 @@ jornada exactamente en el techo, ruido de coma flotante, acumulación por
 cuatrimestre, grupos cancelados), las tres verdictos de RE-02 (incluido el 80 %
 exacto) y los invariantes de los agregados.
 
-## 8. 🔌 Requisitos técnicos transversales
+## 9. 🔌 Requisitos técnicos transversales
 
 - **TypeScript.** `resources/js/data-table.ts` (la fuente de datos Alpine que
   alimenta las tablas client-side) está tipado; `tsconfig.json` en modo `strict`,

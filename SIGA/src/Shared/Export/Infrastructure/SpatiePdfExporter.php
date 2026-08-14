@@ -37,8 +37,10 @@ final class SpatiePdfExporter implements PdfExporterInterface
 {
     public function fromHtml(string $html, string $filename, string $paperSize = 'a4'): StreamedResponse
     {
-        // Warm-Chrome sidecar first (sub-0.14s when running), Browsershot
-        // as the always-working fallback. See WarmChromePdfRenderer.
+        // Warm-Chrome sidecar first, Browsershot as the always-working
+        // fallback. The sidecar also gets launched here if nothing is
+        // listening yet — see WarmChromePdfRenderer for why waiting for
+        // it beats paying Browsershot's per-export startup.
         $pdfBytes = WarmChromePdfRenderer::render($html, $paperSize)
             ?? Pdf::html($html)
                 ->format($paperSize)

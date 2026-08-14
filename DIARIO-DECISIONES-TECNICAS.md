@@ -218,6 +218,122 @@ está verificado, por correcto que se vea el código.
 
 ---
 
+## D-09 · El coste que nadie estaba buscando: el PDF etiquetado
+
+**Situación.** Con el sidecar ya funcionando, el objetivo pasó a ser volumen:
+2 500 filas en menos de 7 s desde un arranque limpio, y llegar a 10 000 para
+conocer el techo. La línea base medida fue 5,0 s para 2 500 filas y 24,9 s para
+10 000 — escalando peor que lineal.
+
+**Qué se probó primero, y por qué estaba mal.** Lo evidente: el CSS. Se midieron,
+una a una y acumuladas sobre el HTML real, la eliminación del `overflow: hidden` y
+el `border-radius` de la tarjeta (el mismo tipo de problema que la sombra que ya se
+había quitado antes), el rayado `nth-child`, los bordes por celda y la fuente web
+en la tabla. **Todas quedaron dentro del ruido de medición.** También se probó
+partir la tabla en tablas pequeñas, por si el coste era la fragmentación de Chrome:
+no lo era. Y se probó ensanchar las columnas, que bajó el documento de 207 a 94
+páginas con las mismas filas y mejoró sólo un 19 % — la señal de que el coste iba
+con las celdas, no con las páginas.
+
+**Cómo apareció la causa real.** En vez de seguir probando hipótesis, se abrió el
+PDF y se hizo un inventario de sus objetos. De 8,9 MB, **7,9 MB eran 52 519 objetos
+`/StructElem`** — el árbol de accesibilidad PDF/UA que Chrome emite por defecto,
+uno por cada `<td>`, más 1 MB de tabla `xref` que sólo existe para indexarlos.
+
+| Filas | Etiquetado | Sin etiquetar | Tamaño |
+|---|---|---|---|
+| 2 500 | 2,66 s | 1,96 s | 8,9 MB → 0,8 MB |
+| 10 000 | 18,33 s | 10,93 s | 36,0 MB → 3,2 MB |
+
+**Qué se aceptó.** Apagarlo por configuración (`PDF_TAGGED`, por defecto `false`),
+en las dos rutas de render. Browsershot tiene `taggedPdf()` para encenderlo y nada
+para apagarlo, y el valor por defecto de Puppeteer es encendido: hubo que pasarlo
+por `setOption('tagged', …)`, que `browser.cjs` reenvía tal cual a `page.pdf()`.
+
+**El intercambio, dicho en voz alta.** Lo que se pierde es la semántica de tabla
+para lectores de pantalla. Se consideró aceptable porque RE-01 genera el `.xlsx`
+con las mismas filas en la misma acción, y una hoja de cálculo es mejor superficie
+asistiva para datos tabulares que un PDF etiquetado. El texto sigue siendo texto
+real. La decisión es reversible con una variable de entorno, no con un cambio de
+código.
+
+**Aprendizaje.** Es la segunda vez en este proyecto (D-01 fue la primera) que el
+instinto —propio y de la IA— apuntó a la parte visible, y la medición encontró el
+coste en una capa que nadie había mirado. La diferencia esta vez es el método: lo
+que resolvió el problema no fue probar otra hipótesis, fue **inspeccionar el
+artefacto producido** en lugar de razonar sobre el código que lo produce.
+
+---
+
+## D-10 · Un tercer error, y esta vez propio: medir una vez no es medir
+
+**Qué pasó.** Al reescribir el sidecar se cambió la página de Chrome reutilizada
+por una nueva en cada petición, porque la reutilizada moría con
+`Protocol error (Page.printToPDF): Printing failed` tras varios reportes grandes.
+Una medición dio que la página nueva costaba ~770 ms más, así que se implementó un
+esquema de "reutilizar y reciclar cada N filas" para quedarse con las dos cosas.
+
+**Por qué estaba mal.** El esquema introdujo su propio bug —un primer presupuesto
+de 40 000 filas era demasiado laxo y degradaba— y, al volver a medir las dos
+estrategias **la una contra la otra en el mismo estado de máquina**, el ahorro de
+770 ms no reapareció: a 2 500 filas eran indistinguibles (1,5–3,1 s en ambas). Esa
+máquina tiene casi 2× de dispersión entre ejecuciones idénticas, y el "770 ms" era
+exactamente eso.
+
+**La corrección.** Página nueva siempre. Sin presupuesto, sin variable que ajustar.
+La comparación decisiva, back-to-back, a 10 000 filas: reutilizada → 14,4 s, 20,5 s,
+**muere**; nueva → 17,5 s, 14,8 s, 13,4 s y sigue. No había velocidad reproducible
+que ganar y sí una forma reproducible de fallar.
+
+**Coste asumido y declarado.** La página nueva añade ~60 ms a cada render pequeño.
+El auto-chequeo del sidecar pasó de ~45 ms a ~105 ms de mediana, así que su
+presupuesto se subió de 140 ms a 200 ms — con el motivo escrito en el propio
+archivo, para que sea un intercambio documentado y no un umbral aflojado hasta que
+la prueba pasara.
+
+**Otros dos errores propios de la misma sesión, por el mismo motivo.** El primer
+barrido para encontrar el techo declaró "NOT A PDF" todos los archivos válidos:
+`page.pdf()` devuelve un `Uint8Array` cuyo `toString()` es `"37,80,68,70,45"`, no
+`"%PDF-"`. Y el primer arranque automático del sidecar colgaba cualquier proceso
+que leyera la salida de PHP: en Windows, `start /B`, `start` en consola nueva y
+`proc_open` con NUL en los tres flujos **heredan igualmente los descriptores**, así
+que el sidecar se quedaba con el `stdout` de PHP y nadie veía nunca el EOF. Los
+cinco lanzadores obvios se midieron; el único que suelta el pipe y deja el proceso
+vivo es `Start-Process` de PowerShell.
+
+**Aprendizaje.** D-02 y D-04 fueron sobre no fiarse de una respuesta sin medirla.
+Éste es el escalón siguiente: **no fiarse de una medición sin repetirla contra su
+alternativa**. Una cifra aislada no distingue una mejora de la varianza de la
+máquina.
+
+---
+
+## D-11 · Dónde se rompe, y por qué eso se escribe en el código
+
+**Qué se midió.** Barrido de tamaños contra la plantilla real: 15 000 filas
+renderizan (22,8 s, 1 155 páginas, PDF válido); **16 000 no** — el proceso de
+impresión de Chrome muere. No hay degradación intermedia ni salida parcial.
+
+**El problema operativo.** Sin guarda, ese fallo además es lento y doble: el
+sidecar muere, el cliente cae a Browsershot, y Browsershot pasa otro minuto
+fallando con el documento idéntico. Dos minutos para un error genérico.
+
+**Qué se hizo.** `config('exports.pdf.max_rows')` (12 000 por defecto) y una
+comprobación en el job **antes** de tocar Chrome, que falla al instante con el
+motivo. El margen entre 15 000 medidas y 12 000 configuradas es deliberado y está
+justificado en el archivo: el límite real es contenido total, no número de filas, y
+un reporte con celdas más largas llega antes a la misma pared.
+
+**Qué protege la prueba.** `PdfExportLimitsTest` fija las dos garantías invisibles
+—que a Chrome se le pide no etiquetar, y que un reporte pasado del techo se rechaza
+sin llegar al render— y se comprobó que **saben ponerse en rojo**: quitando la
+línea `setOption('tagged', …)` fallan dos pruebas, y quitando la llamada a la
+guarda falla la tercera. La primera vez que se intentó esa comprobación el parche
+no llegó a aplicarse y la prueba pasó igual: es literalmente D-04 otra vez, y se
+detectó porque el conteo posterior al parche no dio cero.
+
+---
+
 ## Balance del uso de IA
 
 **Dónde aportó valor real.** Diagnóstico de rendimiento con medición, exploración

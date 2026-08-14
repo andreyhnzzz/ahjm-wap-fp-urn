@@ -89,13 +89,17 @@ final class BrowsershotConfiguration
     ];
 
     /**
-     * Seconds before Browsershot gives up on Chrome. 30, not 15: a
-     * 1500+ row export (Groups) measured at 17-19s end to end (see the
-     * mPDF/Dompdf/Spatie spike) — 15s was cutting those off. Exports now
-     * run as a queued job (GenerateReportExportJob), so this only has
-     * to survive the render, never a user's page load.
+     * Seconds before Browsershot gives up on Chrome. 120, not 30: the 30
+     * was sized for the ~17-19s a 1500-row export used to take, and a
+     * 10,000-row stress run measured 24.9s end to end — close enough to
+     * the cap to start failing intermittently rather than cleanly.
+     * Untagged output (see config/exports.php) brings 10,000 rows back to
+     * ~11s, so this cap is now headroom above the documented ceiling
+     * instead of a limit sitting inside the working range. Exports run as
+     * a queued job (GenerateReportExportJob), so it never blocks a user's
+     * page load.
      */
-    private const TIMEOUT = 30;
+    private const TIMEOUT = 120;
 
     public static function apply(Browsershot $browsershot): void
     {
@@ -105,6 +109,13 @@ final class BrowsershotConfiguration
             ->showBackground()
             ->addChromiumArguments(self::CHROMIUM_ARGUMENTS)
             ->noSandbox()
-            ->setOption('pipe', true);
+            ->setOption('pipe', true)
+            // Browsershot has taggedPdf() to turn tagging ON and nothing to
+            // turn it OFF, while Puppeteer's own default is ON — so this
+            // goes through setOption(), which browser.cjs forwards verbatim
+            // into page.pdf(). Measured at 2500 rows: 8.9 MB -> 0.8 MB,
+            // 2.66s -> 1.96s. config/exports.php has the full table and the
+            // reasoning behind the accessibility trade-off.
+            ->setOption('tagged', config('exports.pdf.tagged'));
     }
 }
