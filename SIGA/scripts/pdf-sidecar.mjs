@@ -7,7 +7,8 @@
  * is then only setContent + print on a warm browser.
  *
  * Start with:  npm run pdf:sidecar
- * Protocol:    POST /pdf  {"html": "...", "format": "a4"}  -> PDF bytes
+ * Protocol:    POST /pdf     {"html": "...", "format": "a4"} -> PDF bytes
+ *              GET  /health -> 200 "ok"
  * PHP side:    WarmChromePdfRenderer (falls back to Browsershot when
  *              this process is not running, so it is never required).
  */
@@ -55,6 +56,13 @@ const page = await browser.newPage();
 let queue = Promise.resolve();
 
 http.createServer((req, res) => {
+    // Cheap liveness probe so the PHP client can wait for "up" after
+    // launching this process without POSTing a document to find out.
+    if (req.method === 'GET' && req.url.startsWith('/health')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+        return;
+    }
+
     if (req.method !== 'POST' || req.url !== '/pdf') {
         res.writeHead(404).end();
         return;
