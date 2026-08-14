@@ -16,6 +16,13 @@ import puppeteer from 'puppeteer';
 
 const PORT = Number(process.env.PDF_SIDECAR_PORT ?? 8720);
 
+// Chrome emits a PDF/UA structure tree by default — one /StructElem per
+// <td>. On a 2500-row export that is 52,519 extra objects, 8.9 MB vs
+// 0.8 MB and 2.66s vs 1.96s. PHP sends the project's configured value
+// per request (config/exports.php); this is only the default for a
+// hand-made curl.
+const TAGGED_DEFAULT = process.env.PDF_TAGGED === 'true';
+
 // Same flags as BrowsershotConfiguration so both paths drive Chromium
 // identically — same DOM, same layout, same PDF.
 const browser = await puppeteer.launch({
@@ -58,7 +65,7 @@ http.createServer((req, res) => {
     req.on('end', () => {
         queue = queue.then(async () => {
             try {
-                const { html, format = 'a4' } = JSON.parse(body);
+                const { html, format = 'a4', tagged = TAGGED_DEFAULT } = JSON.parse(body);
                 // Templates are fully self-contained (no network fetches,
                 // see table-pdf.blade.php) so 'load' fires immediately —
                 // never wait on networkidle here, it costs 500ms flat.
@@ -68,7 +75,7 @@ http.createServer((req, res) => {
                 // an intermittent 500 instead of a slow success. 60s gives
                 // the same headroom BrowsershotConfiguration's 30s PHP-side
                 // cap effectively enforces anyway (PHP gives up first).
-                const pdf = await page.pdf({ format, printBackground: true, timeout: 60_000 });
+                const pdf = await page.pdf({ format, printBackground: true, tagged, timeout: 60_000 });
                 res.writeHead(200, { 'Content-Type': 'application/pdf' }).end(pdf);
             } catch (error) {
                 res.writeHead(500).end(String(error));
