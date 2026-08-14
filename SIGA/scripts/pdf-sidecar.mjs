@@ -2,16 +2,18 @@
  * Warm-Chrome PDF sidecar.
  *
  * Browsershot's fixed cost is spawning node + require('puppeteer') per
- * export (~350-400ms, see BrowsershotConfiguration). This process pays
- * that cost once at startup and keeps one Chromium alive; each request
+ * export (~350-400ms, see BrowsershotConfiguration) on top of a fresh
+ * Chromium launch — ~2.2s per export measured end to end. This process
+ * pays that once at startup and keeps one Chromium alive; each request
  * is then only setContent + print on a warm browser.
  *
- * Start with:  npm run pdf:sidecar
- * Protocol:    POST /pdf     body = the HTML itself, ?format=letter
- *              POST /pdf     body = {"html": "...", "format": "letter"}
+ * Start with:  npm run pdf:sidecar   (composer run dev starts it too)
+ * Protocol:    POST /pdf   body = the HTML itself, ?format=letter
+ *              POST /pdf   body = {"html": "...", "format": "letter"}
  *              GET  /health -> 200 "ok"
- * PHP side:    WarmChromePdfRenderer (falls back to Browsershot when
- *              this process is not running, so it is never required).
+ * PHP side:    WarmChromePdfRenderer, which launches this process on
+ *              demand and still falls back to Browsershot if it does not
+ *              come up — the sidecar is never required.
  */
 import http from 'node:http';
 import puppeteer from 'puppeteer';
@@ -29,8 +31,8 @@ const TAGGED_DEFAULT = process.env.PDF_TAGGED === 'true';
 // identically — same DOM, same layout, same PDF.
 const browser = await puppeteer.launch({
     // chrome-headless-shell: measured ~25ms per printToPDF vs ~180ms in
-    // full-Chrome new headless — the difference between meeting the
-    // 0.14s budget and missing it.
+    // full-Chrome new headless on a small document — the difference
+    // between meeting the budget in pdf-sidecar-check.mjs and missing it.
     headless: 'shell',
     pipe: true,
     args: [
@@ -129,6 +131,7 @@ http.createServer((req, res) => {
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
         const body = Buffer.concat(chunks).toString('utf8');
+
         const readMs = performance.now() - startedAt;
 
         queue = queue.then(async () => {
