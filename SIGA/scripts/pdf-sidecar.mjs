@@ -50,11 +50,42 @@ const browser = await puppeteer.launch({
     ],
 });
 
-// One reused page, requests serialized through a promise chain.
-// ponytail: single serialized page; swap for a small page pool if
-// concurrent exports ever queue up noticeably.
-const page = await browser.newPage();
+// Requests are serialized through a promise chain: one Chromium, one
+// render at a time, one FRESH PAGE per render.
+//
+// The page used to be long-lived, which looks like the obvious
+// optimisation and is not one. Measured back to back on the same machine
+// state, 10,000-row renders on a reused page went 14.4s, 20.5s, then
+// died with "Protocol error (Page.printToPDF): Printing failed"; the
+// same three renders on fresh pages ran 17.5s, 14.8s, 13.4s and kept
+// going. At 2,500 rows the two strategies are indistinguishable (1.5-3.1s
+// either way — this machine has close to 2x run-to-run spread on
+// identical work, which is exactly how an earlier "reuse saves 770ms"
+// reading survived one measurement and not the second).
+//
+// So the reuse question resolved as: no reproducible speed to gain, and
+// a reproducible way to fail. Fresh page every time, and no tuning knob
+// to get wrong.
 let queue = Promise.resolve();
+
+async function renderPdf({ html, format = 'a4', tagged = TAGGED_DEFAULT }) {
+    const page = await browser.newPage();
+
+    try {
+        // Templates are fully self-contained (no network fetches, see
+        // table-pdf.blade.php) so 'load' fires immediately — never wait
+        // on networkidle here, it costs 500ms flat.
+        await page.setContent(html, { waitUntil: 'load' });
+
+        // Explicit timeout: puppeteer's page.pdf() defaults to 30s, and a
+        // 10,000-row report measured 13-17s untagged and ~18s tagged,
+        // close enough to that default to turn into an intermittent 500
+        // rather than a slow success.
+        return await page.pdf({ format, printBackground: true, tagged, timeout: 300_000 });
+    } finally {
+        await page.close().catch(() => {});
+    }
+}
 
 /**
  * Accepts the HTML either as a raw body (Content-Type: text/html, with
@@ -99,18 +130,8 @@ http.createServer((req, res) => {
 
         queue = queue.then(async () => {
             try {
-                const { html, format = 'a4', tagged = TAGGED_DEFAULT } = parseRequest(req, body);
-                // Templates are fully self-contained (no network fetches,
-                // see table-pdf.blade.php) so 'load' fires immediately —
-                // never wait on networkidle here, it costs 500ms flat.
-                await page.setContent(html, { waitUntil: 'load' });
-                // Explicit timeout: puppeteer's page.pdf() defaults to 30s,
-                // and a multi-thousand-row report near that edge turns into
-                // an intermittent 500 instead of a slow success. 60s gives
-                // the same headroom BrowsershotConfiguration's 30s PHP-side
-                // cap effectively enforces anyway (PHP gives up first).
-                const pdf = await page.pdf({ format, printBackground: true, tagged, timeout: 60_000 });
-                res.writeHead(200, { 'Content-Type': 'application/pdf' }).end(pdf);
+                const pdf = await renderPdf(parseRequest(req, body));
+                res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length }).end(pdf);
             } catch (error) {
                 res.writeHead(500).end(String(error));
             }
