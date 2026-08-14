@@ -121,17 +121,38 @@ http.createServer((req, res) => {
         return;
     }
 
+    const startedAt = performance.now();
+
     // Chunks collected as an array and joined once: string += on a
     // multi-megabyte body is quadratic in the number of chunks.
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
         const body = Buffer.concat(chunks).toString('utf8');
+        const readMs = performance.now() - startedAt;
 
         queue = queue.then(async () => {
+            const queuedAt = performance.now();
             try {
-                const pdf = await renderPdf(parseRequest(req, body));
-                res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length }).end(pdf);
+                const request = parseRequest(req, body);
+                const parsedAt = performance.now();
+                const pdf = await renderPdf(request);
+
+                // Reported back so the PHP-side benchmark can separate
+                // "Chrome was slow" from "getting the bytes here was
+                // slow" without guessing. A 10,000-row export ships 8.4 MB
+                // of HTML up and a PDF back down; without this split, all
+                // of it reads as render time.
+                res.writeHead(200, {
+                    'Content-Type': 'application/pdf',
+                    'Content-Length': pdf.length,
+                    'Server-Timing': [
+                        `read;dur=${readMs.toFixed(1)}`,
+                        `wait;dur=${(queuedAt - startedAt - readMs).toFixed(1)}`,
+                        `parse;dur=${(parsedAt - queuedAt).toFixed(1)}`,
+                        `render;dur=${(performance.now() - parsedAt).toFixed(1)}`,
+                    ].join(', '),
+                }).end(pdf);
             } catch (error) {
                 res.writeHead(500).end(String(error));
             }
