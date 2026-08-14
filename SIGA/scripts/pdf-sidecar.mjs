@@ -7,7 +7,8 @@
  * is then only setContent + print on a warm browser.
  *
  * Start with:  npm run pdf:sidecar
- * Protocol:    POST /pdf     {"html": "...", "format": "a4"} -> PDF bytes
+ * Protocol:    POST /pdf     body = the HTML itself, ?format=letter
+ *              POST /pdf     body = {"html": "...", "format": "a4"}
  *              GET  /health -> 200 "ok"
  * PHP side:    WarmChromePdfRenderer (falls back to Browsershot when
  *              this process is not running, so it is never required).
@@ -55,6 +56,27 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 let queue = Promise.resolve();
 
+/**
+ * Accepts the HTML either as a raw body (Content-Type: text/html, with
+ * ?format= and ?tagged= in the query) or as the original JSON envelope.
+ * Raw is what PHP uses: a 10,000-row export is 8.4 MB of HTML, and
+ * json_encode on one side plus JSON.parse on the other is pure copying
+ * of a string that is already exactly what Chrome wants.
+ */
+function parseRequest(req, body) {
+    if ((req.headers['content-type'] ?? '').includes('application/json')) {
+        return JSON.parse(body);
+    }
+
+    const { searchParams } = new URL(req.url, 'http://127.0.0.1');
+
+    return {
+        html: body,
+        format: searchParams.get('format') ?? 'a4',
+        tagged: searchParams.has('tagged') ? searchParams.get('tagged') === '1' : TAGGED_DEFAULT,
+    };
+}
+
 http.createServer((req, res) => {
     // Cheap liveness probe so the PHP client can wait for "up" after
     // launching this process without POSTing a document to find out.
@@ -63,17 +85,21 @@ http.createServer((req, res) => {
         return;
     }
 
-    if (req.method !== 'POST' || req.url !== '/pdf') {
+    if (req.method !== 'POST' || !req.url.startsWith('/pdf')) {
         res.writeHead(404).end();
         return;
     }
 
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
+    // Chunks collected as an array and joined once: string += on a
+    // multi-megabyte body is quadratic in the number of chunks.
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+
         queue = queue.then(async () => {
             try {
-                const { html, format = 'a4', tagged = TAGGED_DEFAULT } = JSON.parse(body);
+                const { html, format = 'a4', tagged = TAGGED_DEFAULT } = parseRequest(req, body);
                 // Templates are fully self-contained (no network fetches,
                 // see table-pdf.blade.php) so 'load' fires immediately —
                 // never wait on networkidle here, it costs 500ms flat.
