@@ -22,26 +22,35 @@ use Illuminate\Support\Facades\Http;
  */
 final class WarmChromePdfRenderer
 {
-    // ponytail: fixed localhost endpoint; lift to config() only if a
-    // deployment ever needs a different port than PDF_SIDECAR_PORT=8720.
-    private const ENDPOINT = 'http://127.0.0.1:8720/pdf';
-
     public static function render(string $html, string $paperSize): ?string
     {
         try {
-            // 30s, not the typical-case ~0.14s above: a 1500+ row export
-            // (Groups) measured at 17-19s end to end (see the mPDF/Dompdf/
-            // Spatie spike) — a 15s cap was cutting those off and silently
-            // falling back to the slower Browsershot path. Now runs as a
-            // queued job (GenerateReportExportJob) regardless, so this
-            // only has to survive the render, not a user's page load.
             $response = Http::connectTimeout(1)
-                ->timeout(30)
-                ->post(self::ENDPOINT, ['html' => $html, 'format' => $paperSize]);
+                // Sized for the documented ceiling, not the typical case:
+                // 10,000 rows measured ~11s. A cap that sits inside the
+                // working range does not protect anything, it just turns
+                // slow-but-correct into a silent fallback to the slower
+                // path (which is what a 15s cap was doing here).
+                ->timeout((int) config('exports.pdf.sidecar.render_timeout'))
+                ->post(self::endpoint('/pdf'), [
+                    'html' => $html,
+                    'format' => $paperSize,
+                    'tagged' => (bool) config('exports.pdf.tagged'),
+                ]);
         } catch (ConnectionException) {
             return null;
         }
 
         return $response->successful() ? $response->body() : null;
+    }
+
+    /**
+     * @param  array<string, string>  $query
+     */
+    private static function endpoint(string $path, array $query = []): string
+    {
+        $url = 'http://127.0.0.1:'.config('exports.pdf.sidecar.port').$path;
+
+        return $query === [] ? $url : $url.'?'.http_build_query($query);
     }
 }
