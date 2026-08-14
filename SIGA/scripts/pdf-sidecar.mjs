@@ -8,7 +8,7 @@
  *
  * Start with:  npm run pdf:sidecar
  * Protocol:    POST /pdf     body = the HTML itself, ?format=letter
- *              POST /pdf     body = {"html": "...", "format": "a4"}
+ *              POST /pdf     body = {"html": "...", "format": "letter"}
  *              GET  /health -> 200 "ok"
  * PHP side:    WarmChromePdfRenderer (falls back to Browsershot when
  *              this process is not running, so it is never required).
@@ -68,7 +68,7 @@ const browser = await puppeteer.launch({
 // to get wrong.
 let queue = Promise.resolve();
 
-async function renderPdf({ html, format = 'a4', tagged = TAGGED_DEFAULT }) {
+async function renderPdf({ html, format = 'letter', tagged = TAGGED_DEFAULT }) {
     const page = await browser.newPage();
 
     try {
@@ -103,7 +103,7 @@ function parseRequest(req, body) {
 
     return {
         html: body,
-        format: searchParams.get('format') ?? 'a4',
+        format: searchParams.get('format') ?? 'letter',
         tagged: searchParams.has('tagged') ? searchParams.get('tagged') === '1' : TAGGED_DEFAULT,
     };
 }
