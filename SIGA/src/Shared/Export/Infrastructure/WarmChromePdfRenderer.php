@@ -32,11 +32,11 @@ final class WarmChromePdfRenderer
                 // slow-but-correct into a silent fallback to the slower
                 // path (which is what a 15s cap was doing here).
                 ->timeout((int) config('exports.pdf.sidecar.render_timeout'))
-                ->post(self::endpoint('/pdf'), [
-                    'html' => $html,
+                ->withBody($html, 'text/html')
+                ->post(self::endpoint('/pdf', [
                     'format' => $paperSize,
-                    'tagged' => (bool) config('exports.pdf.tagged'),
-                ]);
+                    'tagged' => config('exports.pdf.tagged') ? '1' : '0',
+                ]));
         } catch (ConnectionException) {
             return null;
         }
