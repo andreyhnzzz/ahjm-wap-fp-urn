@@ -120,14 +120,16 @@
             </div>
 
             <div class="form-field">
-                <label for="groupTeacherId">{{ __('Teacher') }}</label>
-                <select id="groupTeacherId" wire:model.live="form.teacherId" class="{{ $errors->has('form.teacherId') ? 'has-error' : '' }}">
-                    <option value="">{{ __('Unassigned') }}</option>
-                    @foreach ($teacherOptions as $option)
-                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                    @endforeach
-                </select>
-                @error('form.teacherId') <span class="form-error">{{ $message }}</span> @enderror
+                <x-ui.autocomplete
+                    id="groupTeacherId"
+                    :label="__('Teacher')"
+                    search="teacherQuery"
+                    :options="$teacherSuggestions"
+                    :selected-label="$teacherSelectedLabel"
+                    select="selectTeacher"
+                    clear="clearTeacher"
+                    :placeholder="__('Search a teacher by name')"
+                    :error="$errors->first('form.teacherId')" />
             </div>
 
             <div class="form-field">
@@ -138,14 +140,16 @@
             </div>
 
             <div class="form-field">
-                <label for="groupClassroomId">{{ __('Classroom') }}</label>
-                <select id="groupClassroomId" wire:model="form.classroomId" class="{{ $errors->has('form.classroomId') ? 'has-error' : '' }}">
-                    <option value="">{{ __('Unassigned') }}</option>
-                    @foreach ($classroomOptions as $option)
-                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                    @endforeach
-                </select>
-                @error('form.classroomId') <span class="form-error">{{ $message }}</span> @enderror
+                <x-ui.autocomplete
+                    id="groupClassroomId"
+                    :label="__('Classroom')"
+                    search="classroomQuery"
+                    :options="$classroomSuggestions"
+                    :selected-label="$classroomSelectedLabel"
+                    select="selectClassroom"
+                    clear="clearClassroom"
+                    :placeholder="__('Search a classroom by name')"
+                    :error="$errors->first('form.classroomId')" />
             </div>
 
             <div class="form-field">

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Src\Academic\Group\Presentation\Livewire;
 
+use App\Livewire\Concerns\InteractsWithAutocomplete;
 use App\Livewire\Concerns\InteractsWithDataTable;
 use App\Livewire\Concerns\InteractsWithExports;
 use Illuminate\Contracts\View\View;
@@ -41,6 +42,7 @@ use Src\Academic\Teacher\Domain\Entities\Teacher;
 class GroupComponent extends Component
 {
     use AuthorizesRequests;
+    use InteractsWithAutocomplete;
     use InteractsWithDataTable;
     use InteractsWithExports;
 
@@ -57,6 +59,15 @@ class GroupComponent extends Component
     public ?int $editingId = null;
 
     public GroupForm $form;
+
+    /**
+     * Live queries behind the two autocompletes. They hold what the user
+     * is TYPING, never the selection itself — that stays on $form, so a
+     * half-typed search can never be mistaken for a chosen teacher.
+     */
+    public string $teacherQuery = '';
+
+    public string $classroomQuery = '';
 
     public function mount(): void
     {
@@ -101,6 +112,36 @@ class GroupComponent extends Component
      * design when the correct value is never ambiguous. This is a UI
      * convenience over an already-enforced rule, not a second copy of it.
      */
+    /**
+     * The autocompletes write through these rather than binding straight
+     * to $form.teacherId, so choosing goes through the same
+     * updatedFormTeacherId() hook a <select> triggered — the workload
+     * field is enabled/cleared by that hook, and skipping it would leave
+     * a group with a workload and nobody to carry it.
+     */
+    public function selectTeacher(string $value): void
+    {
+        $this->form->teacherId = $value;
+        $this->teacherQuery = '';
+        $this->updatedFormTeacherId($value);
+    }
+
+    public function clearTeacher(): void
+    {
+        $this->selectTeacher('');
+    }
+
+    public function selectClassroom(string $value): void
+    {
+        $this->form->classroomId = $value;
+        $this->classroomQuery = '';
+    }
+
+    public function clearClassroom(): void
+    {
+        $this->selectClassroom('');
+    }
+
     public function updatedFormTeacherId(string $value): void
     {
         if ($value === '') {
@@ -201,9 +242,20 @@ class GroupComponent extends Component
         // output with no Alpine layer at all, so Livewire morphs them
         // fresh on every render — skipping the fetch here would empty
         // both dropdowns the moment any modal reopens after the first load.
+        $teacherOptions = $this->teacherOptions($teachersUseCase);
+        $classroomOptions = $this->classroomOptions($classroomsUseCase);
+
         $view = $view->with([
-            'teacherOptions' => $this->teacherOptions($teachersUseCase),
-            'classroomOptions' => $this->classroomOptions($classroomsUseCase),
+            'teacherOptions' => $teacherOptions,
+            'classroomOptions' => $classroomOptions,
+            // What the two autocompletes actually show: the full lists
+            // narrowed to the current query. Filtering here rather than in
+            // the browser keeps the payload proportional to what is
+            // displayed instead of to the whole catalogue.
+            'teacherSuggestions' => $this->filterOptions($teacherOptions, $this->teacherQuery),
+            'classroomSuggestions' => $this->filterOptions($classroomOptions, $this->classroomQuery),
+            'teacherSelectedLabel' => $this->labelFor($teacherOptions, $this->form->teacherId),
+            'classroomSelectedLabel' => $this->labelFor($classroomOptions, $this->form->classroomId),
             'modalityOptions' => GroupLabelFormatter::modalityOptions(),
             'statusOptions' => GroupLabelFormatter::statusOptions(),
         ]);
