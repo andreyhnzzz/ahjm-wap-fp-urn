@@ -26,6 +26,18 @@ final class WarmChromePdfRenderer
     // deployment ever needs a different port than PDF_SIDECAR_PORT=8720.
     private const ENDPOINT = 'http://127.0.0.1:8720/pdf';
 
+    /**
+     * The same sidecar, for callers that drive it themselves rather than
+     * through render() — ChunkedChromePdfWriter issues several renders
+     * concurrently through Http::pool(), which this one-shot helper
+     * cannot express. Exposed here so there is still exactly one place
+     * that knows where the sidecar lives.
+     */
+    public static function endpoint(): string
+    {
+        return self::ENDPOINT;
+    }
+
     public static function render(string $html, string $paperSize): ?string
     {
         try {
