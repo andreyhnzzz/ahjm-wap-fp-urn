@@ -8,14 +8,21 @@ use App\Jobs\GenerateReportExportJob;
 use App\Models\Permission;
 use App\Models\Role as RoleModel;
 use App\Models\User;
+use Dompdf\Dompdf;
 use Illuminate\Console\Command;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
+use Mpdf\Mpdf;
+use Mpdf\Output\Destination;
 use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Facades\Pdf;
 use Src\Academic\Group\Presentation\Livewire\GroupComponent;
 use Src\IdentityAccess\Role\Presentation\Livewire\RoleComponent;
 use Src\Shared\Export\Infrastructure\BrowsershotConfiguration;
+use Symfony\Component\Process\PhpExecutableFinder;
 
 /**
  * SPIKE — not production code. Throwaway comparison of mPDF/Dompdf/Spatie
@@ -65,7 +72,10 @@ class PdfSpikeCompare extends Command
             mkdir($outDir, 0755, true);
         }
 
-        $phpBinary = (new \Symfony\Component\Process\PhpExecutableFinder())->find();
+        // find() returns false when it cannot locate an interpreter, and
+        // `false` in a process argument list is not a command — fall back to
+        // the binary already running this command.
+        $phpBinary = (new PhpExecutableFinder)->find() ?: PHP_BINARY;
         $results = [];
 
         foreach (self::DATASETS as $dataset) {
@@ -81,7 +91,7 @@ class PdfSpikeCompare extends Command
                             $phpBinary, '-d', 'memory_limit=1024M', 'artisan', 'spike:pdf-compare',
                             "--engine={$engine}", "--dataset={$dataset}",
                         ]);
-                } catch (\Illuminate\Process\Exceptions\ProcessTimedOutException) {
+                } catch (ProcessTimedOutException) {
                     $results[] = [
                         'dataset' => $dataset, 'engine' => $engine,
                         'wall_ms' => (hrtime(true) - $wallStart) / 1_000_000,
@@ -189,13 +199,16 @@ class PdfSpikeCompare extends Command
 
             $this->spikeUser?->delete();
 
+            // JSON_THROW_ON_ERROR, not a silent `?: ''`: the parent process
+            // parses this line, and a subprocess that quietly wrote nothing
+            // would look like a render that produced no measurement.
             fwrite(STDOUT, json_encode([
                 'render_ms' => $renderMs,
                 'peak_mem_bytes' => memory_get_peak_usage(true),
                 'pdf_bytes' => strlen($bytes),
                 'row_count' => $rowCount,
                 'pdf_base64' => base64_encode($bytes),
-            ]));
+            ], JSON_THROW_ON_ERROR));
 
             return self::SUCCESS;
         } catch (\Throwable $e) {
@@ -215,15 +228,15 @@ class PdfSpikeCompare extends Command
         // other side, not because it's free.
         ini_set('pcre.backtrack_limit', '20000000');
 
-        $mpdf = new \Mpdf\Mpdf(['tempDir' => sys_get_temp_dir()]);
+        $mpdf = new Mpdf(['tempDir' => sys_get_temp_dir()]);
         $mpdf->WriteHTML($html);
 
-        return $mpdf->Output('', \Mpdf\Output\Destination::STRING_RETURN);
+        return $mpdf->Output('', Destination::STRING_RETURN);
     }
 
     private function renderDompdf(string $html): string
     {
-        $dompdf = new \Dompdf\Dompdf(['isRemoteEnabled' => false]);
+        $dompdf = new Dompdf(['isRemoteEnabled' => false]);
         $dompdf->setPaper('letter');
         $dompdf->loadHtml($html);
         $dompdf->render();
@@ -239,7 +252,7 @@ class PdfSpikeCompare extends Command
      */
     private function renderSpatieWarm(string $html): string
     {
-        $response = \Illuminate\Support\Facades\Http::connectTimeout(1)
+        $response = Http::connectTimeout(1)
             ->timeout(90)
             ->post('http://127.0.0.1:8720/pdf', ['html' => $html, 'format' => 'letter']);
 
@@ -270,16 +283,30 @@ class PdfSpikeCompare extends Command
      * the same view the job renders — the exact HTML production's worker
      * hands to Chrome.
      */
+    /**
+     * @param  class-string<RoleComponent|GroupComponent>  $componentClass
+     */
     private function captureHtml(string $componentClass): string
     {
-        \Illuminate\Support\Facades\Queue::fake([GenerateReportExportJob::class]);
+        Queue::fake([GenerateReportExportJob::class]);
 
+        // Narrowed to the two components this spike actually drives, not to
+        // Livewire\Component: the base class declares neither mount() nor
+        // exportPdf(), so `[Component, 'mount']` is not provably callable —
+        // and the analyser is right, nothing on the base guarantees them.
         $component = app()->make($componentClass);
+
+        if (! $component instanceof RoleComponent && ! $component instanceof GroupComponent) {
+            throw new \InvalidArgumentException(
+                "{$componentClass} does not expose the mount()/exportPdf() pair this spike drives."
+            );
+        }
+
         app()->call([$component, 'mount']);
         app()->call([$component, 'exportPdf']);
 
         $job = null;
-        \Illuminate\Support\Facades\Queue::assertPushed(GenerateReportExportJob::class, function (GenerateReportExportJob $pushed) use (&$job): bool {
+        Queue::assertPushed(GenerateReportExportJob::class, function (GenerateReportExportJob $pushed) use (&$job): bool {
             $job = $pushed;
 
             return true;
