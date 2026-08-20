@@ -49,6 +49,8 @@ use Src\Shared\Export\Contracts\ExcelExporterInterface;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
 use Src\Shared\Export\Contracts\PdfExporterInterface;
 use Src\Shared\Export\Contracts\PdfFileWriterInterface;
+use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
+use Src\Shared\Export\Infrastructure\ChunkedChromePdfWriter;
 use Src\Shared\Export\Infrastructure\SpatieExcelExporter;
 use Src\Shared\Export\Infrastructure\SpatieExcelFileWriter;
 use Src\Shared\Export\Infrastructure\SpatiePdfExporter;
@@ -73,6 +75,7 @@ final class DomainServiceProvider extends ServiceProvider
         PdfExporterInterface::class => SpatiePdfExporter::class,
         ExcelFileWriterInterface::class => SpatieExcelFileWriter::class,
         PdfFileWriterInterface::class => SpatiePdfFileWriter::class,
+        TabularPdfWriterInterface::class => ChunkedChromePdfWriter::class,
     ];
 
     /**

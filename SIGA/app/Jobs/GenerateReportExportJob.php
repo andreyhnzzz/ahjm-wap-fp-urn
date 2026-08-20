@@ -13,7 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
-use Src\Shared\Export\Contracts\PdfFileWriterInterface;
+use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
 use Throwable;
 
 /**
@@ -57,7 +57,7 @@ class GenerateReportExportJob implements ShouldQueue
         public readonly string $paperSize = 'letter',
     ) {}
 
-    public function handle(PdfFileWriterInterface $pdfWriter, ExcelFileWriterInterface $excelWriter): void
+    public function handle(TabularPdfWriterInterface $pdfWriter, ExcelFileWriterInterface $excelWriter): void
     {
         $export = ReportExport::query()->findOrFail($this->reportExportId);
         $export->update(['status' => ReportExportStatus::Processing]);
@@ -71,12 +71,14 @@ class GenerateReportExportJob implements ShouldQueue
         $absolutePath = $disk->path($relativePath);
 
         if ($this->format === 'pdf') {
+            // The writer receives the rows, not finished markup: past a few
+            // thousand rows this has to become several PDFs stitched back
+            // together, and only something holding the rows can decide that.
+            // See ChunkedChromePdfWriter for the measurements.
             $pdfWriter->write(
-                view('exports.table-pdf', [
-                    'title' => $this->title,
-                    'headers' => $this->headers,
-                    'rows' => $this->rows,
-                ])->render(),
+                $this->title,
+                $this->headers,
+                $this->rows,
                 $absolutePath,
                 $this->paperSize,
             );
