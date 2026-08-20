@@ -43,5 +43,16 @@ jobs:
       - name: Setup Application
         run: composer setup
 
+      # RE-01 and RE-02 assert that a real .pdf comes out, and that PDF is
+      # rendered by Chromium through Puppeteer. Puppeteer downloads its
+      # browser from a postinstall script, and .npmrc sets ignore-scripts=true
+      # on purpose, so `npm install` inside `composer setup` never fetches it
+      # and the runner's ~/.cache/puppeteer stays empty. Asking for the binary
+      # explicitly is the same one-off step the README documents for a local
+      # checkout. It has to run after composer setup, which is what installs
+      # the puppeteer package that provides this command.
+      - name: Install headless Chrome for the PDF exports
+        run: npx puppeteer browsers install chrome-headless-shell
+
       - name: Run CI Checks
         run: composer ci:check
