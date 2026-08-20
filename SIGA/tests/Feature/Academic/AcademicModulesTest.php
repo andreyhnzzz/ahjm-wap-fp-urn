@@ -216,6 +216,42 @@ class AcademicModulesTest extends TestCase
     }
 
     /**
+     * refreshTable() is a no-op in server mode, but its argument used to be
+     * built before the call could decide that — and building it re-fetches
+     * every row in the table. Deleting one group re-read the whole offer
+     * for a value that was thrown away (1.3 s and 102 MB at 20,000 rows).
+     */
+    public function test_a_mutation_does_not_re_read_the_whole_table_in_server_mode(): void
+    {
+        $this->actingAs($this->superadmin());
+        $group = Group::factory()->create();
+        Group::factory()->count(15)->create();
+
+        $component = Livewire::test(GroupComponent::class);
+
+        DB::enableQueryLog();
+        $component->call('delete', $group->id);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // A row-returning read of the offer with no LIMIT. The paginator's
+        // own count(*) and the DELETE are bounded work and belong here.
+        $unbounded = collect($queries)->filter(function (array $query): bool {
+            $sql = strtolower((string) $query['query']);
+
+            return str_starts_with($sql, 'select')
+                && str_contains($sql, 'from "groups"')
+                && ! str_contains($sql, 'count(*)')
+                && ! str_contains($sql, 'limit');
+        });
+
+        $this->assertTrue(
+            $unbounded->isEmpty(),
+            'A mutation read the groups table without a LIMIT; server mode pages, it must never load every row: '.$unbounded->pluck('query')->implode(' | '),
+        );
+    }
+
+    /**
      * `perPage` is a public Livewire property, so its value comes from the
      * client's payload — the 10/25/50 <select> constrains the UI, not the
      * request. Since /groups pages server-side, an unclamped value becomes

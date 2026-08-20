@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Concerns;
 
+use Closure;
 use Livewire\Attributes\Url;
 
 /**
@@ -163,12 +164,21 @@ trait InteractsWithDataTable
      * No-op in server mode, where Livewire's re-render already handles
      * it — components can call this unconditionally.
      *
-     * @param  array<int, array<string, mixed>>  $rows
+     * Takes a Closure, not the rows: "no-op" used to mean the dispatch was
+     * skipped while the argument had already been built, and building it
+     * means re-fetching the whole table. On the 20,000-row offer that was
+     * 1.3 s and 102 MB burned on every save, delete and export for a value
+     * server mode immediately discarded. An array is still accepted for
+     * the client-mode components, where the rows are needed either way.
+     *
+     * @param  Closure(): array<int, array<string, mixed>>|array<int, array<string, mixed>>  $rows
      */
-    public function refreshTable(array $rows): void
+    public function refreshTable(Closure|array $rows): void
     {
-        if ($this->isClientMode()) {
-            $this->dispatch('data-table-refresh', rows: $rows);
+        if ($this->isServerMode()) {
+            return;
         }
+
+        $this->dispatch('data-table-refresh', rows: $rows instanceof Closure ? $rows() : $rows);
     }
 }

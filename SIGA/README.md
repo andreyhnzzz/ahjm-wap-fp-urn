@@ -79,7 +79,17 @@ incluida); si se parte de cero, `cp .env.example .env` y luego
 exactamente el mismo tablero, de modo que una regresión en las reglas de riesgo se
 ve como un número distinto y no se confunde con "datos aleatorios diferentes".
 
-- **15 docentes**, **10 aulas**, **41 grupos** (33 en `2026-II`, 8 en `2026-I`).
+- **15 docentes**, **10 aulas**, **41 grupos** escritos a mano (33 en `2026-II`,
+  8 en `2026-I`) — son los que hacen observable cada regla, y los únicos que
+  importan para leer el tablero.
+- Encima, **19 959 grupos de volumen** (`BULK-####`) y **50 docentes** propios
+  (`BULK-####`), hasta **20 000 grupos** en total. Existen para probar paginación
+  y reportes con carga real; usan su propia bolsa de docentes para no tocar
+  ninguna jornada de la que dependan RE-02 y RE-04. Se escriben con un `upsert()`
+  por lotes: sembrar los 20 000 tarda **1,8 s**, no los 94 s que costaba el
+  `updateOrCreate()` por fila.
+- Para bajar el volumen (o subirlo), `AcademicDataSeeder::BULK_GROUP_COUNT`.
+  El seeder es idempotente: correrlo dos veces deja 20 000 filas, no 40 000.
 - Al menos un caso de **cada** riesgo de RE-04 y de **cada** color de RE-02:
 
 | Escenario sembrado | Qué demuestra |
@@ -236,6 +246,29 @@ mide el documento único subyacente, no el camino troceado). Rechazar dejó de
 ser la respuesta honesta en cuanto existió algo que sí podía renderizarlo. El
 `.xlsx` sigue sin techo comparable, y sigue siendo la mejor opción para lo que no
 necesita maquetación de página.
+
+### Memoria del click de exportar
+
+El troceado quita el techo del **render**, no el de la **petición**. `exportPdf()`
+construye todas las filas que coinciden en la misma petición web que despacha el
+job, porque el job recibe filas y no una consulta. Medido sobre los datos reales:
+
+| Filas | Pico de la petición | Payload del job |
+|---|---|---|
+| 20 000 | **116 MB** | 7,2 MB |
+| 45 000 | **192 MB** | 12,2 MB |
+
+Con el `memory_limit` de 128 MB por defecto, 20 000 filas cabe con 12 MB de
+margen —demasiado justo para confiarse— y 45 000 muere con
+`Allowed memory size exhausted`. Para exportar volúmenes así:
+
+```bash
+php -d memory_limit=512M artisan serve
+php -d memory_limit=2G artisan queue:work --timeout=3600 --memory=2048
+```
+
+La pantalla en sí no tiene ese problema: `/groups` pagina en el servidor
+(`GroupComponent::$tableMode`) y su coste no crece con el tamaño de la tabla.
 
 ## 8. ✅ Verificación
 

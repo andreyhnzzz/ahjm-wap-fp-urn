@@ -176,7 +176,7 @@ class GroupComponent extends Component
         }
 
         $this->showModal = false;
-        $this->refreshTable($this->freshRows($listUseCase, $teachersUseCase, $classroomsUseCase));
+        $this->refreshTable(fn (): array => $this->freshRows($listUseCase, $teachersUseCase, $classroomsUseCase));
         $this->dispatch('toast', variant: 'success', text: $this->editingId === null
             ? __('Group created.')
             : __('Group updated.'));
@@ -193,7 +193,7 @@ class GroupComponent extends Component
 
         $useCase->handle($id);
 
-        $this->refreshTable($this->freshRows($listUseCase, $teachersUseCase, $classroomsUseCase));
+        $this->refreshTable(fn (): array => $this->freshRows($listUseCase, $teachersUseCase, $classroomsUseCase));
         $this->dispatch('toast', variant: 'success', text: __('Group deleted.'));
     }
 
@@ -216,7 +216,7 @@ class GroupComponent extends Component
         // See RoleComponent::exportPdf() — without this, rows stays at
         // the [] every post-first-render commit sends, and the table
         // goes empty until a full reload.
-        $this->refreshTable($this->freshRows($useCase, $teachersUseCase, $classroomsUseCase));
+        $this->refreshTable(fn (): array => $this->freshRows($useCase, $teachersUseCase, $classroomsUseCase));
     }
 
     public function exportExcel(
@@ -234,7 +234,7 @@ class GroupComponent extends Component
             Str::slug(__('Groups')).'.xlsx',
         );
 
-        $this->refreshTable($this->freshRows($useCase, $teachersUseCase, $classroomsUseCase));
+        $this->refreshTable(fn (): array => $this->freshRows($useCase, $teachersUseCase, $classroomsUseCase));
     }
 
     public function render(
