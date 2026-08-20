@@ -7,7 +7,7 @@
 ![Alpine.js](https://img.shields.io/badge/Alpine.js-TALL_stack-8BC0D0?style=flat-square&logo=alpinedotjs&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-embedded-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![Architecture](https://img.shields.io/badge/architecture-DDD%20%2F%20Hexagonal-0f2547?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-102%20passing-2EA44F?style=flat-square&logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-126%20passing-2EA44F?style=flat-square&logo=checkmarx&logoColor=white)
 ![PHPStan](https://img.shields.io/badge/PHPStan-level%207-8B5CF6?style=flat-square&logo=php&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-3178C6?style=flat-square)
 
@@ -65,6 +65,17 @@ composer run dev
 Queda en `http://localhost:8000`. El `.env` ya viene listo (clave de aplicación
 incluida); si se parte de cero, `cp .env.example .env` y luego
 `php artisan key:generate`.
+
+La API JSON de `routes/api.php` firma sus tokens con un secreto **aparte** de
+`APP_KEY` (ver `config/jwt.php`), y `.env.example` lo trae vacío a propósito.
+Partiendo de cero hay que generarlo, o `/api/login` responde 500:
+
+```bash
+php -r "echo 'JWT_SECRET='.bin2hex(random_bytes(32)).PHP_EOL;" >> .env
+```
+
+La suite no depende de eso: `phpunit.xml` fija su propio `JWT_SECRET` de prueba,
+así que los tests dan igual con `.env` o sin él.
 
 ### 🔑 Usuarios sembrados
 
