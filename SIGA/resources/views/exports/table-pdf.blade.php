@@ -277,15 +277,26 @@
         </header>
 
         <main class="content">
-            <div class="dots-accent" aria-hidden="true"></div>
+            {{--
+                A report past a few thousand rows is rendered as several
+                PDFs and stitched back together (ChunkedChromePdfWriter),
+                because Chromium cannot print one document that large.
+                Every chunk is its own HTML document, so without this guard
+                the cover block would reappear every 2.000 rows in the
+                merged file. Only the first chunk carries it; the rest
+                continue the table.
+            --}}
+            @unless ($continuation ?? false)
+                <div class="dots-accent" aria-hidden="true"></div>
 
-            <section class="hero">
-                <h1>{{ __('Report of :title', ['title' => $title]) }}</h1>
-                <div class="date-pill">
-                    <span class="date-label">{{ __('Issue date') }}</span>
-                    <span class="date-value">{{ now()->translatedFormat('d \d\e F \d\e Y, H:i') }}</span>
-                </div>
-            </section>
+                <section class="hero">
+                    <h1>{{ __('Report of :title', ['title' => $title]) }}</h1>
+                    <div class="date-pill">
+                        <span class="date-label">{{ __('Issue date') }}</span>
+                        <span class="date-value">{{ now()->translatedFormat('d \d\e F \d\e Y, H:i') }}</span>
+                    </div>
+                </section>
+            @endunless
 
             <div class="table-card">
                 <table>
@@ -307,7 +318,12 @@
                     <tbody>
                         @forelse ($rows as $row)
                         <tr>
-                            <td class="row-index">{{ $loop->iteration }}</td>
+                            {{-- $rowOffset, not just $loop->iteration: a large
+                                 report is rendered as several documents and
+                                 merged, and each one restarts its own loop —
+                                 without the offset the numbering fell back to
+                                 1 every 1.500 rows in the merged file. --}}
+                            <td class="row-index">{{ ($rowOffset ?? 0) + $loop->iteration }}</td>
                             @foreach ($row as $value)
                             <td>{{ $value }}</td>
                             @endforeach
