@@ -9,7 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
-use Src\Shared\Export\Contracts\PdfFileWriterInterface;
+use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
 use Tests\TestCase;
 
 /**
@@ -26,9 +26,13 @@ class ReportExportJobTest extends TestCase
     public function test_a_successful_render_marks_the_export_ready_and_writes_the_file(): void
     {
         Storage::fake('local');
-        $this->app->bind(PdfFileWriterInterface::class, fn () => new class implements PdfFileWriterInterface
+        // The job takes the rows now, not finished HTML: past a few thousand
+        // rows the writer has to split them across several documents, and
+        // only something holding the rows can decide that. See
+        // ChunkedChromePdfWriter.
+        $this->app->bind(TabularPdfWriterInterface::class, fn () => new class implements TabularPdfWriterInterface
         {
-            public function write(string $html, string $absolutePath, string $paperSize = 'a4'): void
+            public function write(string $title, array $headers, iterable $rows, string $absolutePath, string $paperSize = 'letter'): void
             {
                 file_put_contents($absolutePath, 'fake-pdf-bytes');
             }
@@ -48,7 +52,7 @@ class ReportExportJobTest extends TestCase
             [['Name' => 'Coordinator']],
             'pdf',
         ))->handle(
-            $this->app->make(PdfFileWriterInterface::class),
+            $this->app->make(TabularPdfWriterInterface::class),
             $this->app->make(ExcelFileWriterInterface::class),
         );
 
