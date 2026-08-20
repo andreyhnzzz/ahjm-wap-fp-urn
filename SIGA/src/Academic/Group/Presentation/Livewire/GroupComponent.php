@@ -47,12 +47,21 @@ class GroupComponent extends Component
     use InteractsWithExports;
 
     /**
-     * A term's offer is in the low hundreds of rows at most, so the whole
-     * set ships once and Alpine filters it in the browser. Flip to
-     * 'server' if this ever accumulates several years of history in one
-     * table.
+     * Was 'client' — the whole set shipped once and Alpine filtered it in
+     * the browser — on the premise that "a term's offer is in the low
+     * hundreds of rows at most". That premise broke: with 45,000 groups
+     * loaded, freshRows() hydrates 45,000 Group entities in one request
+     * (168 MB measured, over PHP's default 128 MB limit) and /groups dies
+     * with a fatal before rendering a single row. The same flip the old
+     * comment already prescribed for "several years of history in one
+     * table" is the fix — server mode pages the query instead.
+     *
+     * Note this bounds what the *screen* loads, not what an export
+     * loads: exportPdf() still builds every matching row in the request
+     * that dispatches the job (192 MB peak at 45,000 rows, 12 MB of job
+     * payload), so that path needs a memory_limit well above the default.
      */
-    protected string $tableMode = 'client';
+    protected string $tableMode = 'server';
 
     public bool $showModal = false;
 
@@ -292,13 +301,17 @@ class GroupComponent extends Component
             sortDir: $this->sortDir,
         );
 
+        // Both catalogs are resolved BEFORE the array_map, not inside it:
+        // teacherNames()/classroomNames() each hit the database, so calling
+        // them per row was the very N+1 freshRows() already avoids. Measured
+        // at perPage=10: 20 queries / 78 ms per render against 2 queries /
+        // 4 ms — and it grew linearly with the "show N records" selector.
+        $teacherNames = $this->teacherNames($teachersUseCase);
+        $classroomNames = $this->classroomNames($classroomsUseCase);
+
         $paginator = new LengthAwarePaginator(
             items: array_map(
-                fn (Group $group): array => $this->toRow(
-                    $group,
-                    $this->teacherNames($teachersUseCase),
-                    $this->classroomNames($classroomsUseCase),
-                ),
+                fn (Group $group): array => $this->toRow($group, $teacherNames, $classroomNames),
                 $result['items'],
             ),
             total: $result['total'],

@@ -147,7 +147,10 @@ duplicar el enum garantizaría que ambos se desincronizaran.
 
 Los umbrales configurables (`config/academic.php`, alimentado por variables de
 entorno) se leen **una sola vez**, en `DomainServiceProvider`, y entran al dominio
-como valores planos. Por eso `src/` no contiene ni un `config()` ni un `env()`.
+como valores planos. Por eso **ninguna capa `Domain/` contiene un `config()` ni un
+`env()`** — verificable con `grep -rE '\b(env|config)\(' src/*/*/Domain/`, que no
+devuelve nada. Las capas `Presentation/` e `Infrastructure/` sí leen `config()`:
+son adaptadores, es su trabajo conocer el framework.
 
 ## 6. 🧠 Decisiones técnicas
 
