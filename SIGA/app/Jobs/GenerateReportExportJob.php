@@ -74,7 +74,11 @@ class GenerateReportExportJob implements ShouldQueue
             // The writer receives the rows, not finished markup: past a few
             // thousand rows this has to become several PDFs stitched back
             // together, and only something holding the rows can decide that.
-            // See ChunkedChromePdfWriter for the measurements.
+            // See ChunkedChromePdfWriter for the measurements — this is also
+            // why there is no row-ceiling guard here. An earlier version of
+            // this job refused anything past ~12,000 rows, measured against
+            // a single Chrome document; chunking removed that ceiling rather
+            // than raising it.
             $pdfWriter->write(
                 $this->title,
                 $this->headers,

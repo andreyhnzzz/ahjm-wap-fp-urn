@@ -80,8 +80,9 @@ if ($lastPage <= 7) {
             @endif>
             @if ($isClient)
             {{--
-                The rows are seeded through this tag instead of being
-                interpolated into x-data, and the difference is load-bearing.
+                The rows are seeded through this element's `data-rows`
+                attribute instead of being interpolated into x-data, and the
+                difference is load-bearing.
 
                 Client mode ships its rows once and sends `[]` on every later
                 render (InteractsWithDataTable::isFirstRender). That relied on
@@ -92,8 +93,21 @@ if ($lastPage <= 7) {
                 reproducible with a method that touches nothing at all, e.g.
                 pollExportStatus().
 
-                wire:ignore keeps this tag out of the morph so the seed stays
-                whole, and x-data no longer changes between renders. The
+                A `data-rows` attribute, not a `<script type="application/json">`
+                body: with several thousand rows (a real seeded dataset, not a
+                demo one) that second form tripped a DIFFERENT bug — Livewire's
+                own debug-only root-element check strips `<script>…</script>`
+                with a single regex before parsing the page, and PHP's PCRE
+                backtrack limit gives up on a multi-megabyte script body,
+                returning null. null reaching DOMDocument::loadHTML() is a
+                fatal ValueError on PHP 8.4. Invisible with APP_DEBUG=false
+                (production always is), so it never breaks a real user — but it
+                broke every local run and every CI run the moment the seeded
+                table grew past a few thousand rows. A `data-*` attribute is
+                never inside that regex's match at all.
+
+                wire:ignore keeps this element out of the morph so the seed
+                stays whole, and x-data no longer changes between renders. The
                 payload is the same either way. Updates after a
                 create/update/delete still arrive through the
                 `data-table-refresh` event, unchanged.
@@ -101,7 +115,7 @@ if ($lastPage <= 7) {
                 One table per page — the same assumption data-table.ts already
                 documents for that event.
             --}}
-            <script type="application/json" id="crud-table-rows" wire:ignore>@json($rows)</script>
+            <div id="crud-table-rows" wire:ignore data-rows="{{ json_encode($rows) }}" hidden></div>
             @endif
 
             <div class="card-head">

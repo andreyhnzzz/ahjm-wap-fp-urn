@@ -17,67 +17,63 @@ use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
  * Renders a large table by splitting it into several small PDFs and
  * stitching them back together.
  *
- * WHY, measured on this machine (12 cores, warm chrome-headless-shell,
- * `php artisan bench:pdf` + `node scripts/chrome-bench.mjs`):
+ * WHY: a single PDF document has a hard ceiling in Chrome's print
+ * pipeline, not a soft one. Swept against the real template, untagged, on
+ * a fresh page (see pdf-sidecar.mjs for why fresh, not reused):
  *
- *   filas    printToPDF   ms/fila
- *    1.000       1.47s      1.47
- *    2.000       2.28s      1.14
- *    5.000       6.60s      1.32
- *   15.000      49.55s      3.30      <- se degrada
- *   45.000       FALLA                <- "Protocol error: Printing failed"
+ *   15,000 rows -> 22.8s, 1,155 pages, valid PDF
+ *   16,000 rows -> Chrome's print process dies:
+ *                  "Protocol error (Page.printToPDF): Printing failed"
  *
- * Chromium is linear-ish to about five thousand rows and then collapses;
- * past that it does not merely get slow, it refuses. So chunking is not a
- * tuning knob here, it is the only way 45.000 rows come out at all. CSS
- * micro-optimisation was measured first and does not move this: dropping
- * the dotted gradient, the nth-child striping and the rounded card
- * together took 5.000 rows from 11.5s to 10.6s, while the row count is
- * what decides whether the render finishes.
+ * Nothing degrades in between — it works, then it fails outright. So
+ * chunking is not a tuning knob, it is the only way a report past that
+ * line comes out at all. CHUNK_ROWS stays well under the measured line
+ * for the same reason config/exports.php used to keep its own margin: the
+ * real limit is total HTML content, not row count, and a report with
+ * longer cells reaches the same wall sooner than this project's own
+ * template does.
  *
- * The pieces, and what each costs at 45.000 rows:
+ * The pieces:
  *
- *   1. chunk        rows sliced into CHUNK_ROWS documents
- *   2. render       PARALLEL_REQUESTS at a time against the warm sidecar   13.1s
- *   3. merge        mPDF imports every page and writes one file            4.6s
- *                                                                   total ~19s
+ *   1. chunk    rows sliced into CHUNK_ROWS documents
+ *   2. render   PARALLEL_REQUESTS at a time against the warm sidecar
+ *   3. merge    mPDF imports every page and writes one file
  *
  * mPDF is already installed (it arrived with the D-09 engine spike that
- * *rejected* it as a renderer) so the merge costs no new dependency. It
- * also recompresses on the way out: the 23 chunk files weigh 127MB
- * together and the merged result 13.7MB, with a 68MB peak in PHP.
+ * *rejected* it as a renderer) so the merge costs no new dependency, and
+ * it recompresses the pages on the way out.
  *
  * Below CHUNK_THRESHOLD rows this delegates to the plain one-document
- * writer, so every existing report keeps rendering exactly as before —
- * same Chromium, same template, byte-for-byte the same output.
+ * writer, so a small report keeps rendering exactly as before — same
+ * Chromium, same template, byte-for-byte the same output.
  */
 final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
 {
     /**
-     * Rows per chunk. 2.000 sits at the bottom of the ms/row curve above
-     * (1.14ms/row) — smaller chunks pay Chromium's fixed per-document cost
-     * more often, larger ones start climbing back up the curve.
+     * Rows per chunk. Roughly a third of the measured 15,000-row ceiling —
+     * comfortable margin for reports whose cells run longer than this
+     * project's, and small enough that the merge step is stitching a
+     * manageable number of documents rather than dozens of tiny ones.
      */
-    private const CHUNK_ROWS = 2000;
+    private const CHUNK_ROWS = 6000;
 
     /**
      * Concurrent renders. Chromium layout is CPU-bound, so this tracks
-     * cores rather than I/O — measured on a 12-core machine, six pages
-     * gave 19.9s of render and ten gave 17.4s, leaving two cores for the
-     * web workers sharing the box.
+     * cores rather than I/O.
      *
-     * The sidecar has to be able to serve them: it keeps a pool of
-     * PDF_SIDECAR_PAGES pages (default 10, deliberately the same number)
-     * and anything beyond that queues. Change them together, or the extra
-     * requests here just wait — silently, and only under load.
+     * The sidecar has to be able to serve them: PDF_SIDECAR_CONCURRENCY
+     * (default 10, deliberately the same number) bounds how many fresh
+     * pages it renders at once, and anything beyond that queues inside the
+     * sidecar. Change them together, or the extra requests here just wait
+     * — silently, and only under load.
      */
     private const PARALLEL_REQUESTS = 10;
 
     /**
      * Under this, one document is both faster (no merge pass) and safer
-     * (no temp files). 4.000 is comfortably inside the linear region.
+     * (no temp files) — comfortably inside the measured working range.
      */
-    private const CHUNK_THRESHOLD = 4000;
+    private const CHUNK_THRESHOLD = 12000;
 
     /** Seconds a single chunk render may take before we give up on it. */
     private const CHUNK_TIMEOUT = 60;
@@ -206,8 +202,16 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
         // also the running offset between one chunk and the next.
         $chunkSize = count(reset($chunks) ?: []);
 
-        // In waves rather than all at once: 23 concurrent renders would
-        // put every chunk's HTML in flight simultaneously (~32MB) and
+        // The pool below cannot trigger the sidecar's own boot-on-demand
+        // (Http::pool() has no hook for a single request's response before
+        // firing the rest), so that has to happen once, up front. If it
+        // does not come up, every chunk in every wave falls through to
+        // Browsershot individually — slower, never impossible.
+        WarmChromePdfRenderer::ensureRunning();
+        $endpoint = WarmChromePdfRenderer::pdfEndpoint($paperSize);
+
+        // In waves rather than all at once: two dozen concurrent renders
+        // would put every chunk's HTML in flight simultaneously and
         // oversubscribe the CPU, which makes each individual render
         // slower without finishing the batch any sooner.
         foreach (array_chunk($chunks, self::PARALLEL_REQUESTS, true) as $wave) {
@@ -223,16 +227,20 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
                     $title, $headers, $chunkRows, $index > 0, $index * $chunkSize);
             }
 
-            $responses = Http::pool(function (Pool $pool) use ($bodies, $paperSize): array {
+            // Raw body, not a JSON envelope: a 6.000-row chunk is well over
+            // a megabyte of HTML, and json_encode on this side plus
+            // JSON.parse on the sidecar's is pure copying of a string that
+            // is already exactly what Chrome wants (same reasoning as
+            // WarmChromePdfRenderer::post(), which this bypasses because it
+            // only knows how to send one request at a time).
+            $responses = Http::pool(function (Pool $pool) use ($bodies, $endpoint): array {
                 $requests = [];
 
                 foreach ($bodies as $index => $html) {
                     $requests[] = $pool->as((string) $index)
                         ->timeout(self::CHUNK_TIMEOUT)
-                        ->post(WarmChromePdfRenderer::endpoint(), [
-                            'html' => $html,
-                            'format' => $paperSize,
-                        ]);
+                        ->withBody($html, 'text/html')
+                        ->post($endpoint);
                 }
 
                 return $requests;

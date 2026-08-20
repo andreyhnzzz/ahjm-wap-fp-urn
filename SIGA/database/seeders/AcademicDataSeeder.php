@@ -20,7 +20,7 @@ use Src\Academic\Group\Domain\ValueObjects\Modality;
  *
  * Idempotent: every row is written with updateOrCreate() on its natural
  * key, so running the seeder twice leaves the same row count rather than
- * doubling it (41 scenario/filler/previous-term groups + 2500 bulk
+ * doubling it (41 scenario/filler/previous-term groups + 11959 bulk
  * volume groups, see BULK_GROUP_COUNT).
  *
  * The scenario block below is designed so the dataset contains at least
@@ -39,9 +39,9 @@ class AcademicDataSeeder extends Seeder
      * identity cards) so it never touches the workload totals the
      * scenario's RE-04/RE-02 comments depend on, but reuses the existing
      * classrooms. Written with updateOrCreate() like everything else, so
-     * re-seeding stays at 2500 rows instead of growing every run.
+     * re-seeding stays at 12000 total rows instead of growing every run.
      */
-    private const BULK_GROUP_COUNT = 2500;
+    private const BULK_GROUP_COUNT = 11_959;
 
     private const BULK_TEACHER_COUNT = 50;
 

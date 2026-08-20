@@ -14,9 +14,11 @@ use Tests\TestCase;
  * involved, so they can be verified without a browser in CI: when a report
  * stays a single document, and how the rows are split when it does not.
  *
- * The rendering itself is deliberately not mocked into a fake here — that
- * path is exercised for real by `php artisan bench:pdf`, which is where a
- * regression in render time would show up anyway.
+ * The rendering itself is deliberately not exercised here against a real
+ * browser — that needs the sidecar running and belongs to a manual check
+ * (dispatch a real GenerateReportExportJob with 45.000 rows and read the
+ * `pdf.chunked` log line it writes), not a unit suite that has to pass
+ * without one.
  */
 class ChunkedPdfWriterTest extends TestCase
 {
@@ -95,5 +97,30 @@ class ChunkedPdfWriterTest extends TestCase
         $first = (string) $html->invoke($writer, 'Grupos', [['label' => 'Código']], $rows, false, 0);
         $this->assertStringContainsString('<td class="row-index">1</td>', $first);
         $this->assertStringContainsString('<section class="hero">', $first);
+    }
+
+    /**
+     * The institutional banner (<header class="report-header">) used to
+     * sit outside the ` @unless($continuation)` guard, so only the hero
+     * title was suppressed on later chunks — the banner itself reappeared
+     * on every one of them. Invisible in a unit test that only checks the
+     * hero; caught by rendering a real 45.000-row PDF and counting how
+     * many times "UNIVERSIDAD T..." shows up (10, once per chunk, instead
+     * of 1). See D-19 / D-16 in the diary.
+     */
+    public function test_a_continuation_chunk_does_not_repeat_the_institutional_header(): void
+    {
+        $html = new ReflectionMethod(ChunkedChromePdfWriter::class, 'html');
+        $writer = new ChunkedChromePdfWriter(
+            $this->app->make(PdfFileWriterInterface::class));
+
+        $rows = array_fill(0, 3, ['Código' => 'G-1']);
+        $second = (string) $html->invoke($writer, 'Grupos', [['label' => 'Código']], $rows, true, 1500);
+        $first = (string) $html->invoke($writer, 'Grupos', [['label' => 'Código']], $rows, false, 0);
+
+        // The bare class name also appears in every render's <style> block
+        // (the CSS rule), so the assertion targets the actual tag.
+        $this->assertStringNotContainsString('<header class="report-header">', $second);
+        $this->assertStringContainsString('<header class="report-header">', $first);
     }
 }

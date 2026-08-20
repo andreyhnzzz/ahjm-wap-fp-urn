@@ -2,26 +2,37 @@
  * Warm-Chrome PDF sidecar.
  *
  * Browsershot's fixed cost is spawning node + require('puppeteer') per
- * export (~350-400ms, see BrowsershotConfiguration). This process pays
- * that cost once at startup and keeps one Chromium alive; each request
+ * export (~350-400ms, see BrowsershotConfiguration) on top of a fresh
+ * Chromium launch — ~2.2s per export measured end to end. This process
+ * pays that once at startup and keeps one Chromium alive; each request
  * is then only setContent + print on a warm browser.
  *
- * Start with:  npm run pdf:sidecar
- * Protocol:    POST /pdf  {"html": "...", "format": "a4"}  -> PDF bytes
- * PHP side:    WarmChromePdfRenderer (falls back to Browsershot when
- *              this process is not running, so it is never required).
+ * Start with:  npm run pdf:sidecar   (composer run dev starts it too)
+ * Protocol:    POST /pdf   body = the HTML itself, ?format=letter
+ *              POST /pdf   body = {"html": "...", "format": "letter"}
+ *              GET  /health -> 200 "ok"
+ * PHP side:    WarmChromePdfRenderer, which launches this process on
+ *              demand and still falls back to Browsershot if it does not
+ *              come up — the sidecar is never required.
  */
 import http from 'node:http';
 import puppeteer from 'puppeteer';
 
 const PORT = Number(process.env.PDF_SIDECAR_PORT ?? 8720);
 
+// Chrome emits a PDF/UA structure tree by default — one /StructElem per
+// <td>. On a 2500-row export that is 52,519 extra objects, 8.9 MB vs
+// 0.8 MB and 2.66s vs 1.96s. PHP sends the project's configured value
+// per request (config/exports.php); this is only the default for a
+// hand-made curl.
+const TAGGED_DEFAULT = process.env.PDF_TAGGED === 'true';
+
 // Same flags as BrowsershotConfiguration so both paths drive Chromium
 // identically — same DOM, same layout, same PDF.
 const browser = await puppeteer.launch({
     // chrome-headless-shell: measured ~25ms per printToPDF vs ~180ms in
-    // full-Chrome new headless — the difference between meeting the
-    // 0.14s budget and missing it.
+    // full-Chrome new headless on a small document — the difference
+    // between meeting the budget in pdf-sidecar-check.mjs and missing it.
     headless: 'shell',
     pipe: true,
     args: [
@@ -41,102 +52,137 @@ const browser = await puppeteer.launch({
     ],
 });
 
-// A small pool of reused pages.
+// Every render gets its OWN fresh page, closed when it is done — never
+// reused, never pooled.
 //
-// This started as one page behind a promise chain, with a note saying to
-// swap in a pool "if concurrent exports ever queue up noticeably". They
-// did: a 45.000-row report is rendered as chunks fired concurrently
-// (ChunkedChromePdfWriter), and against a single serialized page those
-// renders simply queued — 63s wall clock for work that takes 17s when it
-// actually runs in parallel. Chromium layout is CPU-bound, so the pool
-// size tracks cores rather than I/O: on a 12-core machine six pages
-// measured 19.9s of render and ten measured 17.4s.
+// Measured back to back on the same machine state, 10,000-row renders on
+// a reused page went 14.4s, 20.5s, then died with "Protocol error
+// (Page.printToPDF): Printing failed"; the same three renders on fresh
+// pages ran 17.5s, 14.8s, 13.4s and kept going. A page pool with a
+// DOM-clear between uses (this file's own earlier approach) was a step
+// in the right direction but not the actual fix: it still measured an
+// occasional 38-58s outlier that a pool of always-fresh pages does not
+// reproduce. Fresh page every time, no tuning knob to get wrong.
 //
-// Ten, and do not lower it without lowering
-// ChunkedChromePdfWriter::PARALLEL_REQUESTS to match. That side fires ten
-// renders at a time; a smaller pool here quietly turns the extra ones
-// back into a queue, which is the exact bug this replaced — only harder
-// to see, because everything still works, just slowly.
-//
-// Pages are reused, not created per request: newPage() costs ~40ms and
-// the whole point of this process is not paying setup costs per export.
-const POOL_SIZE = Number(process.env.PDF_SIDECAR_PAGES ?? 10);
-const idle = await Promise.all(
-    Array.from({ length: POOL_SIZE }, () => browser.newPage()),
-);
+// What IS still a knob is how many renders run at once. Chromium layout
+// is CPU-bound, so CONCURRENCY tracks cores, not I/O — several chunks of
+// a large export (ChunkedChromePdfWriter) arrive together and a single
+// serialized queue turned 17s of real work into 63s of waiting the first
+// time this was tried. A semaphore of fresh-page slots gets the
+// parallelism back without reintroducing page reuse.
+const CONCURRENCY = Number(process.env.PDF_SIDECAR_CONCURRENCY ?? 10);
+let inFlight = 0;
 const waiting = [];
 
-// A page that has never printed pays one-off costs on its first pdf()
-// (font stack, print pipeline). With ten of them that landed entirely on
-// whoever exported first after a restart: measured 23.2s against 16-17s
-// for every run after it. One throwaway render each moves that cost to
-// startup, where nobody is waiting.
-await Promise.all(idle.map(async (page) => {
-    await page.setContent('<p>warmup</p>', { waitUntil: 'load' });
-    await page.pdf({ format: 'letter', printBackground: true });
-}));
-
-/** Hands out a free page, or queues until one is released. */
-function acquire() {
-    const page = idle.pop();
-    return page ? Promise.resolve(page) : new Promise((resolve) => waiting.push(resolve));
+function acquireSlot() {
+    if (inFlight < CONCURRENCY) {
+        inFlight++;
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => waiting.push(resolve));
 }
 
-function release(page) {
+function releaseSlot() {
     const next = waiting.shift();
     if (next) {
-        next(page);
+        next();
         return;
     }
-    idle.push(page);
+    inFlight--;
+}
+
+async function renderPdf({ html, format = 'letter', tagged = TAGGED_DEFAULT }) {
+    const page = await browser.newPage();
+
+    try {
+        // Templates are fully self-contained (no network fetches, see
+        // table-pdf.blade.php) so 'load' fires immediately — never wait
+        // on networkidle here, it costs 500ms flat.
+        await page.setContent(html, { waitUntil: 'load' });
+
+        // Explicit timeout: puppeteer's page.pdf() defaults to 30s, and a
+        // 10,000-row report measured 13-17s untagged and ~18s tagged,
+        // close enough to that default to turn into an intermittent 500
+        // rather than a slow success.
+        return await page.pdf({ format, printBackground: true, tagged, timeout: 300_000 });
+    } finally {
+        await page.close().catch(() => {});
+    }
+}
+
+/**
+ * Accepts the HTML either as a raw body (Content-Type: text/html, with
+ * ?format= and ?tagged= in the query) or as the original JSON envelope.
+ * Raw is what PHP uses: a 10,000-row export is 8.4 MB of HTML, and
+ * json_encode on one side plus JSON.parse on the other is pure copying
+ * of a string that is already exactly what Chrome wants.
+ */
+function parseRequest(req, body) {
+    if ((req.headers['content-type'] ?? '').includes('application/json')) {
+        return JSON.parse(body);
+    }
+
+    const { searchParams } = new URL(req.url, 'http://127.0.0.1');
+
+    return {
+        html: body,
+        format: searchParams.get('format') ?? 'letter',
+        tagged: searchParams.has('tagged') ? searchParams.get('tagged') === '1' : TAGGED_DEFAULT,
+    };
 }
 
 http.createServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/pdf') {
+    // Cheap liveness probe so the PHP client can wait for "up" after
+    // launching this process without POSTing a document to find out.
+    if (req.method === 'GET' && req.url.startsWith('/health')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+        return;
+    }
+
+    if (req.method !== 'POST' || !req.url.startsWith('/pdf')) {
         res.writeHead(404).end();
         return;
     }
 
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', () => {
-        acquire().then(async (page) => {
-            try {
-                const { html, format = 'a4' } = JSON.parse(body);
-                // Templates are fully self-contained (no network fetches,
-                // see table-pdf.blade.php) so 'load' fires immediately —
-                // never wait on networkidle here, it costs 500ms flat.
-                await page.setContent(html, { waitUntil: 'load' });
-                // Explicit timeout: puppeteer's page.pdf() defaults to 30s,
-                // and a multi-thousand-row report near that edge turns into
-                // an intermittent 500 instead of a slow success. 60s gives
-                // the same headroom BrowsershotConfiguration's 30s PHP-side
-                // cap effectively enforces anyway (PHP gives up first).
-                const pdf = await page.pdf({ format, printBackground: true, timeout: 60_000 });
-                res.writeHead(200, { 'Content-Type': 'application/pdf' }).end(pdf);
-            } catch (error) {
-                res.writeHead(500).end(String(error));
-            } finally {
-                // Drop the DOM before parking the page. A reused page holds
-                // its last document until the next setContent, so ten pages
-                // sat on ten chunks' worth of rows between exports; with
-                // 1.500-row chunks that was enough resident DOM to make an
-                // occasional export take 38s instead of 17 while Chromium
-                // reclaimed it. Emptying costs ~1ms and bounds the memory.
-                try {
-                    await page.setContent('', { waitUntil: 'load' });
-                } catch {
-                    // A page that will not even clear is not worth keeping,
-                    // but the request already succeeded — do not fail it.
-                }
+    const startedAt = performance.now();
 
-                // Always: a page leaked on an error path would shrink the
-                // pool by one until the process restarts, and the symptom
-                // would be exports getting mysteriously slower over days.
-                release(page);
-            }
-        });
+    // Chunks collected as an array and joined once: string += on a
+    // multi-megabyte body is quadratic in the number of chunks.
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', async () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        const readMs = performance.now() - startedAt;
+
+        await acquireSlot();
+        const queuedAt = performance.now();
+
+        try {
+            const request = parseRequest(req, body);
+            const parsedAt = performance.now();
+            const pdf = await renderPdf(request);
+
+            // Reported back so the PHP-side benchmark can separate
+            // "Chrome was slow" from "getting the bytes here was slow"
+            // (or "waiting for a free slot") without guessing. A
+            // 10,000-row export ships 8.4 MB of HTML up and a PDF back
+            // down; without this split, all of it reads as render time.
+            res.writeHead(200, {
+                'Content-Type': 'application/pdf',
+                'Content-Length': pdf.length,
+                'Server-Timing': [
+                    `read;dur=${readMs.toFixed(1)}`,
+                    `wait;dur=${(queuedAt - startedAt - readMs).toFixed(1)}`,
+                    `parse;dur=${(parsedAt - queuedAt).toFixed(1)}`,
+                    `render;dur=${(performance.now() - parsedAt).toFixed(1)}`,
+                ].join(', '),
+            }).end(pdf);
+        } catch (error) {
+            res.writeHead(500).end(String(error));
+        } finally {
+            releaseSlot();
+        }
     });
 }).listen(PORT, '127.0.0.1', () => {
-    console.log(`pdf-sidecar ready on http://127.0.0.1:${PORT} (${POOL_SIZE} pages)`);
+    console.log(`pdf-sidecar ready on http://127.0.0.1:${PORT} (concurrency ${CONCURRENCY})`);
 });

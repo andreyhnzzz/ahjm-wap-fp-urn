@@ -91,21 +91,29 @@ window.addEventListener("export-ready", (event) => {
 });
 
 /**
- * Reads the rows the server seeded into a wire:ignore'd JSON tag.
+ * Reads the rows the server seeded into a wire:ignore'd element's
+ * `data-rows` attribute — not a `<script type="application/json">` body.
+ * That was the first version of this and broke on a real seeded dataset:
+ * Livewire's own debug-only root-element check strips every
+ * `<script>…</script>` with one regex before parsing the page, and PHP's
+ * PCRE backtrack limit gives up on a multi-megabyte script body, handing a
+ * fatal ValueError to DOMDocument::loadHTML() on PHP 8.4. A `data-*`
+ * attribute is never inside that regex's match.
  *
- * Returns [] rather than throwing when the tag is missing or malformed: an
- * empty table is a recoverable state (the next data-table-refresh fills it),
- * whereas an exception here kills Alpine's init for the whole component and
- * takes search, sorting and pagination down with it.
+ * Returns [] rather than throwing when the element is missing or malformed:
+ * an empty table is a recoverable state (the next data-table-refresh fills
+ * it), whereas an exception here kills Alpine's init for the whole
+ * component and takes search, sorting and pagination down with it.
  */
 function readSeededRows(seedId?: string): Row[] {
   if (!seedId) return [];
 
-  const tag = document.getElementById(seedId);
-  if (!tag?.textContent) return [];
+  const el = document.getElementById(seedId);
+  const raw = el?.dataset.rows;
+  if (!raw) return [];
 
   try {
-    const parsed = JSON.parse(tag.textContent);
+    const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -142,7 +150,7 @@ document.addEventListener("alpine:init", () => {
       // This used to say the morph never re-reads a fresh
       // x-data="crudTable(...)" attribute after the first init. Measured
       // on this version, it does re-read it — which is why the rows are
-      // now seeded through a wire:ignore'd JSON tag (readSeededRows)
+      // now seeded through a wire:ignore'd element's data-rows attribute (readSeededRows)
       // instead of being inlined there: the server sends `[]` on every
       // render after the first, and that empty array was landing straight
       // back in this component on any round trip at all.

@@ -218,7 +218,120 @@ está verificado, por correcto que se vea el código.
 
 ---
 
-## D-09 · Comparación de motores de PDF: por qué no reemplazar Chromium
+## D-09 · El coste que nadie estaba buscando: el PDF etiquetado
+
+**Situación.** Con el sidecar ya funcionando, el objetivo pasó a ser volumen:
+2 500 filas en menos de 7 s desde un arranque limpio, y llegar a 10 000 para
+conocer el techo. La línea base medida fue 5,0 s para 2 500 filas y 24,9 s para
+10 000 — escalando peor que lineal.
+
+**Qué se probó primero, y por qué estaba mal.** Lo evidente: el CSS. Se midieron,
+una a una y acumuladas sobre el HTML real, la eliminación del `overflow: hidden` y
+el `border-radius` de la tarjeta (el mismo tipo de problema que la sombra que ya se
+había quitado antes), el rayado `nth-child`, los bordes por celda y la fuente web
+en la tabla. **Todas quedaron dentro del ruido de medición.** También se probó
+partir la tabla en tablas pequeñas, por si el coste era la fragmentación de Chrome:
+no lo era. Y se probó ensanchar las columnas, que bajó el documento de 207 a 94
+páginas con las mismas filas y mejoró sólo un 19 % — la señal de que el coste iba
+con las celdas, no con las páginas.
+
+**Cómo apareció la causa real.** En vez de seguir probando hipótesis, se abrió el
+PDF y se hizo un inventario de sus objetos. De 8,9 MB, **7,9 MB eran 52 519 objetos
+`/StructElem`** — el árbol de accesibilidad PDF/UA que Chrome emite por defecto,
+uno por cada `<td>`, más 1 MB de tabla `xref` que sólo existe para indexarlos.
+
+| Filas | Etiquetado | Sin etiquetar | Tamaño |
+|---|---|---|---|
+| 2 500 | 2,66 s | 1,96 s | 8,9 MB → 0,8 MB |
+| 10 000 | 18,33 s | 10,93 s | 36,0 MB → 3,2 MB |
+
+**Qué se aceptó.** Apagarlo por configuración (`PDF_TAGGED`, por defecto `false`),
+en las dos rutas de render. Browsershot tiene `taggedPdf()` para encenderlo y nada
+para apagarlo, y el valor por defecto de Puppeteer es encendido: hubo que pasarlo
+por `setOption('tagged', …)`, que `browser.cjs` reenvía tal cual a `page.pdf()`.
+
+**El intercambio, dicho en voz alta.** Lo que se pierde es la semántica de tabla
+para lectores de pantalla. Se consideró aceptable porque RE-01 genera el `.xlsx`
+con las mismas filas en la misma acción, y una hoja de cálculo es mejor superficie
+asistiva para datos tabulares que un PDF etiquetado. El texto sigue siendo texto
+real. La decisión es reversible con una variable de entorno, no con un cambio de
+código.
+
+**Aprendizaje.** Es la segunda vez en este proyecto (D-01 fue la primera) que el
+instinto —propio y de la IA— apuntó a la parte visible, y la medición encontró el
+coste en una capa que nadie había mirado. La diferencia esta vez es el método: lo
+que resolvió el problema no fue probar otra hipótesis, fue **inspeccionar el
+artefacto producido** en lugar de razonar sobre el código que lo produce.
+
+---
+
+## D-10 · Un tercer error, y esta vez propio: medir una vez no es medir
+
+**Qué pasó.** Al reescribir el sidecar se cambió la página de Chrome reutilizada
+por una nueva en cada petición, porque la reutilizada moría con
+`Protocol error (Page.printToPDF): Printing failed` tras varios reportes grandes.
+Una medición dio que la página nueva costaba ~770 ms más, así que se implementó un
+esquema de "reutilizar y reciclar cada N filas" para quedarse con las dos cosas.
+
+**Por qué estaba mal.** El esquema introdujo su propio bug —un primer presupuesto
+de 40 000 filas era demasiado laxo y degradaba— y, al volver a medir las dos
+estrategias **la una contra la otra en el mismo estado de máquina**, el ahorro de
+770 ms no reapareció: a 2 500 filas eran indistinguibles (1,5–3,1 s en ambas). Esa
+máquina tiene casi 2× de dispersión entre ejecuciones idénticas, y el "770 ms" era
+exactamente eso.
+
+**La corrección.** Página nueva siempre. Sin presupuesto, sin variable que ajustar.
+La comparación decisiva, back-to-back, a 10 000 filas: reutilizada → 14,4 s, 20,5 s,
+**muere**; nueva → 17,5 s, 14,8 s, 13,4 s y sigue. No había velocidad reproducible
+que ganar y sí una forma reproducible de fallar.
+
+**Coste asumido y declarado.** La página nueva añade ~60 ms a cada render pequeño.
+El auto-chequeo del sidecar pasó de ~45 ms a ~105 ms de mediana, así que su
+presupuesto se subió de 140 ms a 200 ms — con el motivo escrito en el propio
+archivo, para que sea un intercambio documentado y no un umbral aflojado hasta que
+la prueba pasara.
+
+**Otros dos errores propios de la misma sesión, por el mismo motivo.** El primer
+barrido para encontrar el techo declaró "NOT A PDF" todos los archivos válidos:
+`page.pdf()` devuelve un `Uint8Array` cuyo `toString()` es `"37,80,68,70,45"`, no
+`"%PDF-"`. Y el primer arranque automático del sidecar colgaba cualquier proceso
+que leyera la salida de PHP: en Windows, `start /B`, `start` en consola nueva y
+`proc_open` con NUL en los tres flujos **heredan igualmente los descriptores**, así
+que el sidecar se quedaba con el `stdout` de PHP y nadie veía nunca el EOF. Los
+cinco lanzadores obvios se midieron; el único que suelta el pipe y deja el proceso
+vivo es `Start-Process` de PowerShell.
+
+**Aprendizaje.** D-02 y D-04 fueron sobre no fiarse de una respuesta sin medirla.
+Éste es el escalón siguiente: **no fiarse de una medición sin repetirla contra su
+alternativa**. Una cifra aislada no distingue una mejora de la varianza de la
+máquina.
+
+---
+
+## D-11 · Dónde se rompe, y por qué eso se escribe en el código
+
+**Qué se midió.** Barrido de tamaños contra la plantilla real: 15 000 filas
+renderizan (22,8 s, 1 155 páginas, PDF válido); **16 000 no** — el proceso de
+impresión de Chrome muere. No hay degradación intermedia ni salida parcial.
+
+**El problema operativo.** Sin guarda, ese fallo además es lento y doble: el
+sidecar muere, el cliente cae a Browsershot, y Browsershot pasa otro minuto
+fallando con el documento idéntico. Dos minutos para un error genérico.
+
+**Qué se hizo.** `config('exports.pdf.max_rows')` (12 000 por defecto) y una
+comprobación en el job **antes** de tocar Chrome, que falla al instante con el
+motivo. El margen entre 15 000 medidas y 12 000 configuradas es deliberado y está
+justificado en el archivo: el límite real es contenido total, no número de filas, y
+un reporte con celdas más largas llega antes a la misma pared.
+
+**Qué protege la prueba.** `PdfExportLimitsTest` fija las dos garantías invisibles
+—que a Chrome se le pide no etiquetar, y que un reporte pasado del techo se rechaza
+sin llegar al render— y se comprobó que **saben ponerse en rojo**: quitando la
+línea `setOption('tagged', …)` fallan dos pruebas, y quitando la llamada a la
+guarda falla la tercera. La primera vez que se intentó esa comprobación el parche
+no llegó a aplicarse y la prueba pasó igual: es literalmente D-04 otra vez, y se
+detectó porque el conteo posterior al parche no dio cero.
+## D-12 · Comparación de motores de PDF: por qué no reemplazar Chromium
 
 **Situación.** La exportación de tablas grandes (Grupos, 1500+ filas) tardaba
 ~15-20 s con Spatie/Browsershot, que depende de Chromium — un proceso pesado en
@@ -258,7 +371,7 @@ ejemplo de cada librería.
 
 ---
 
-## D-10 · De petición bloqueante a cola: desacoplar el render de la respuesta HTTP
+## D-13 · De petición bloqueante a cola: desacoplar el render de la respuesta HTTP
 
 **Situación.** Aun con el motor correcto, exportar 1500+ filas seguía
 tardando ~15-20 s **dentro** de la petición HTTP — bloqueando un worker de
@@ -279,7 +392,7 @@ descarga automática cuando el estado pasa a "listo".
 | Respuesta HTTP al usuario | 15-20 s (bloqueaba) | ~200-300 ms |
 | Render en segundo plano | — | Sin cambio, pero ya no bloquea nada |
 
-El tiempo de render no bajó con este cambio — bajó con D-12. Lo que cambió
+El tiempo de render no bajó con este cambio — bajó con D-15. Lo que cambió
 acá es **a quién le pertenece la espera**: ya no es del navegador ni del
 worker de PHP-FPM, es del job en segundo plano.
 
@@ -291,17 +404,17 @@ ya no depende del tamaño del reporte que alguien esté exportando.
 
 ---
 
-## D-11 · Efecto colateral no anticipado: la cola rompió la herramienta de diagnóstico
+## D-14 · Efecto colateral no anticipado: la cola rompió la herramienta de diagnóstico
 
-**Qué pasó.** El spike de D-09 capturaba el HTML real interceptando la
+**Qué pasó.** El spike de D-12 capturaba el HTML real interceptando la
 interfaz `PdfExporterInterface` que `exportPdf()` llamaba de forma directa y
-síncrona. Al migrar `exportPdf()` a la cola (D-10), esa interfaz dejó de
+síncrona. Al migrar `exportPdf()` a la cola (D-13), esa interfaz dejó de
 invocarse en el mismo hilo — la llamada capturada por el spike nunca llegaba
 a ejecutarse, y la herramienta fallaba con un error genérico en vez de
 producir HTML.
 
 **Cómo se detectó.** Se volvió a correr el spike al retomar la optimización
-de rendimiento (D-12) y falló de inmediato, antes de medir nada.
+de rendimiento (D-15) y falló de inmediato, antes de medir nada.
 
 **La corrección.** El spike pasó a usar `Queue::fake()` y a capturar la
 instancia del job efectivamente encolado (`Queue::assertPushed(...)`), leyendo
@@ -311,21 +424,21 @@ intercepción, del puerto síncrono al job asíncrono.
 
 **Aprendizaje.** Una herramienta de diagnóstico que depende de *cómo* se
 implementa una ruta (no solo de *qué* hace) queda expuesta a cualquier
-refactor de esa ruta. No se detectó por revisión de código al hacer D-10 —
+refactor de esa ruta. No se detectó por revisión de código al hacer D-13 —
 se detectó porque la siguiente sesión de trabajo la volvió a ejecutar y
 falló. Vale la pena correr las herramientas de verificación existentes antes
 de asumir que un cambio fue completo.
 
 ---
 
-## D-12 · Una sola regla CSS explicaba el 89 % del tiempo de render
+## D-15 · Una sola regla CSS explicaba el 89 % del tiempo de render
 
-**Situación.** Con la arquitectura de colas ya en su lugar (D-10), se pidió
+**Situación.** Con la arquitectura de colas ya en su lugar (D-13), se pidió
 llevar el tiempo de render de 2541 filas a 11 s o menos. La medición previa
-(D-09) daba ~20 s para 1541 filas — insuficiente margen.
+(D-12) daba ~20 s para 1541 filas — insuficiente margen.
 
 **Qué se consultó.** Perfilado dirigido: se tomó el HTML real de producción
-(vía el job capturado, ver D-11) y se envió al sidecar de Chrome con
+(vía el job capturado, ver D-14) y se envió al sidecar de Chrome con
 variantes puntuales — sin `box-shadow`, sin `border-radius`/`overflow`, sin
 el gradiente decorativo — para aislar cuál regla CSS explicaba el costo,
 en vez de adivinar u optimizar a ciegas.
@@ -357,43 +470,10 @@ real puede estar en un detalle decorativo de una sola línea. La diferencia
 con D-01 es que acá el perfilado fue dirigido por hipótesis explícitas
 (cuatro variantes CSS probadas por separado) en vez de perfilado por fases —
 ambas técnicas llegaron al mismo tipo de hallazgo por caminos distintos.
-
----
-
-## Balance del uso de IA
-
-**Dónde aportó valor real.** Diagnóstico de rendimiento con medición, exploración
-rápida de un código base grande, y detección de patrones (el N+1, las excepciones como
-flujo de control) que estaban repartidos en varios archivos. La ronda de D-09 a D-12
-sumó otro tipo de valor: comparar alternativas reales antes de descartarlas (D-09, tres
-motores de PDF probados contra el HTML de producción, no contra un ejemplo de manual) y
-aislar una causa raíz de un solo detalle CSS entre varios candidatos plausibles (D-12)
-en vez de optimizar por instinto.
-
-**Dónde falló.** Tres veces documentadas arriba (D-02, D-04, D-11), y las tres del mismo
-tipo de fondo: una solución quedó incompleta porque nadie —ni la IA, ni una revisión de
-código— la puso a prueba contra el escenario que la habría expuesto. D-02 y D-04 son
-código que no cumplía su objetivo; D-11 es una herramienta de verificación que un
-refactor posterior dejó de proteger, y que solo se notó al volver a ejecutarla. Ninguna
-de las tres se habría visto leyendo el diff.
-
-**Qué se aprendió sobre la herramienta.** La IA es fiable produciendo código que
-funciona y poco fiable juzgando si ese código resuelve el problema. Es rápida generando
-verificaciones, y es capaz de generar una verificación que no verifica nada — como en
-D-04 — o que deja de correr sin que nadie lo note — como en D-11. El criterio que hubo
-que aportar no fue sintáctico ni de arquitectura: fue insistir en que toda afirmación
-viniera con una medición reproducible, comprobar que las pruebas supieran fallar, y
-volver a correr las herramientas de diagnóstico existentes antes de asumir que un
-cambio anterior las dejó intactas.
-
----
-
----
-
-## D-13 · 45.000 filas: cuando el problema deja de ser la velocidad
+## D-16 · 45.000 filas: cuando el problema deja de ser la velocidad
 
 **Situación.** Se pidió que la exportación a PDF aguantara 45.000 filas en 23 s o
-menos. El punto de partida medido era 2.541 filas en ~3,4 s tras D-12, así que la
+menos. El punto de partida medido era 2.541 filas en ~3,4 s tras D-15, así que la
 pregunta parecía de optimización.
 
 **Qué se consultó.** Dónde se va el tiempo a esa escala, separando etapas
@@ -420,9 +500,9 @@ imposible**, y ninguna cantidad de CSS lo cambiaba.
 
 **Qué se aceptó.** Partir el informe en documentos de ~1.500 filas, renderizarlos
 en paralelo contra el sidecar y unirlos con mPDF —que ya estaba instalado desde el
-spike D-09 que lo *rechazó* como renderizador, así que la unión no costó ninguna
-dependencia nueva—. Medido: 13,8-17,9 s en ocho corridas consecutivas, con un PDF
-final de 14,7 MB y 3.145 páginas.
+spike D-12 que lo *rechazó* como renderizador, así que la unión no costó ninguna
+dependencia nueva—. Medido en su momento: 13,8-17,9 s en ocho corridas consecutivas,
+con un PDF final de 14,7 MB y 3.145 páginas (D-19 revisa el techo citado abajo).
 
 **Un error propio, detectado midiendo.** Se asumió que las fuentes embebidas en
 base64 eran el cuello, porque se re-parsean en cada trozo. Antes de extraerlas a
@@ -453,7 +533,7 @@ bug de numeración solo existía a la vista.
 
 ---
 
-## D-14 · Autocompletado: por qué el filtrado se quedó en el servidor
+## D-17 · Autocompletado: por qué el filtrado se quedó en el servidor
 
 **Situación.** Docente y aula se elegían con un `<select>` que renderizaba el
 catálogo completo. Con 65 docentes es tolerable; el proyecto ya maneja tablas de
@@ -487,7 +567,7 @@ el tamaño del payload sino que la lista ya venía autorizada.
 
 ---
 
-## D-15 · Un comentario que afirmaba lo contrario de lo que hacía el código
+## D-18 · Un comentario que afirmaba lo contrario de lo que hacía el código
 
 **Situación.** Al validar el autocompletado en el navegador —no leyendo el
 código, mirándolo— la tabla de grupos se vaciaba sola mientras se escribía:
@@ -533,9 +613,112 @@ sobreviviendo a método, modal, escritura y selección.
 **Aprendizaje.** Un comentario que explica *por qué* algo funciona es tan
 falsable como el código, y envejece peor: nadie lo vuelve a ejecutar. Este
 llevaba tiempo siendo falso y describía el sistema al revés. Y la propia
-sesión repitió el error de D-13 en pequeño: la hipótesis plausible —las claves
+sesión repitió el error de D-16 en pequeño: la hipótesis plausible —las claves
 faltantes— se aplicó antes de comprobarla, y no era.
 
 ---
+## D-19 · La fusión: dos ramas resolviendo el mismo problema por caminos distintos
+
+**Situación.** Mientras esta sesión trabajaba en local en el troceado de PDF
+(D-16), otra rama del propio equipo (`perf/pdf-large-volume`, dos PRs ya
+fusionados a `main`) atacó el mismo cuello de botella con datos y una decisión
+de diseño distintos: en vez de partir el informe, midió el techo real de un
+solo documento (D-11, 15.000 filas renderiza, 16.000 falla en seco) y lo
+convirtió en una regla — rechazar de inmediato cualquier exportación por
+encima de 12.000 filas, con el Excel como alternativa sin techo.
+
+**El conflicto, y por qué no era solo de código.** Las dos ramas tocaban el
+mismo archivo (`GenerateReportExportJob`) con intenciones opuestas: una hacía
+que 45.000 filas funcionaran, la otra las rechazaba antes de intentarlo. No
+era un conflicto de fusión resoluble por instinto — era una decisión de
+producto que solo el equipo podía tomar. Se preguntó antes de tocar nada, y la
+respuesta fue clara: el troceado reemplaza el límite duro, porque cumple el
+requisito (45.000 filas en el tiempo pedido) donde el límite duro lo impedía.
+
+**Qué se adoptó de la otra rama, sin discusión.** Tres hallazgos, medidos con
+más cuidado del que esta sesión les había dado:
+
+- **El PDF etiquetado (D-09).** Puppeteer emite el árbol de accesibilidad
+  PDF/UA por defecto — encendido, no apagado, al revés de lo que esta sesión
+  asumía. Ninguna medición anterior en D-16 lo había desactivado.
+- **La página reutilizada falla, medida controladamente (D-10).** Página
+  reutilizada: 14,4 s, 20,5 s, muere. Página nueva: 17,5 s, 14,8 s, 13,4 s y
+  sigue. La otra rama descartó explícitamente su propia primera corrección
+  (un esquema de "reciclar cada N filas") tras remedirla contra la
+  alternativa simple y no encontrar diferencia reproducible.
+- **El techo real de un solo documento, con esos dos factores corregidos:**
+  15.000 filas limpio, 16.000 falla. Bastante más alto de lo que D-16 había
+  medido (una degradación ya a 15.000, fallo total a 45.000) — esa medición
+  anterior estaba confundida por exactamente los dos factores de arriba:
+  el PDF etiquetado sin desactivar y una página reutilizada entre tamaños
+  sucesivos en el propio script de medición.
+
+**Qué cambió, en consecuencia.** El sidecar quedó con página fresca en cada
+render (el hallazgo de seguridad de la otra rama) pero con concurrencia
+real — varias páginas frescas a la vez, no una cola serializada — porque el
+troceado sigue necesitando paralelismo para llegar a 45.000 filas en el
+tiempo pedido; ninguna de las dos ramas por separado tenía las dos cosas.
+`CHUNK_ROWS` se recalculó con el techo real (15.000/16.000) en vez del
+techo equivocado de D-16, y `guardRowCeiling()` se eliminó de
+`GenerateReportExportJob` — su propósito quedó cubierto por el troceado.
+
+**Qué se dejó intacto.** La otra rama no tocó `table-pdf.blade.php` ni el
+mecanismo de continuación/desplazamiento del D-16, así que ese trabajo
+fusionó sin conflicto. Su comando de banco (`pdf:bench`) es más completo que
+el de esta sesión (varias corridas, mediana, desglose del sidecar) y lo
+reemplazó sin pérdida.
+
+**Aprendizaje.** El error de D-16 no fue de método — se midió antes de
+construir, igual que aquí — fue de alcance: nunca se cuestionó si el propio
+banco de pruebas tenía sesgos propios (una página reutilizada entre
+tamaños, una opción de Chrome nunca puesta explícitamente en falso). Medir
+sigue sin ser suficiente si lo que se mide está confundido por un factor
+que nadie fue a buscar. Y el conflicto de fusión en sí fue la prueba de que
+"la IA decide sola" no es una opción segura cuando dos ramas legítimas del
+mismo equipo llegan a conclusiones de producto opuestas: eso se pregunta.
+
+---
+
+## Balance del uso de IA
+
+**Dónde aportó valor real.** Diagnóstico de rendimiento con medición en las dos
+ramas de trabajo, exploración rápida de un código base grande, y detección de
+patrones (el N+1, las excepciones como flujo de control) repartidos en varios
+archivos. La ronda de D-09 a D-18 sumó otro tipo de valor: comparar
+alternativas reales antes de descartarlas (D-12, tres motores de PDF probados
+contra el HTML de producción), aislar una causa raíz de un solo detalle CSS
+entre varios candidatos plausibles (D-15), inspeccionar el artefacto producido
+en vez de razonar sobre el código que lo produce (D-09, el inventario de
+objetos `/StructElem` de un PDF), y — en D-19 — reconciliar dos soluciones
+reales y en conflicto sin descartar ninguna a ciegas.
+
+**Dónde falló.** Seis veces documentadas arriba (D-02, D-04, D-10, D-14, D-16,
+D-18), y todas del mismo tipo de fondo: una solución o una medición quedó
+incompleta porque nadie —ni la IA, ni una revisión de código— la puso a
+prueba contra el escenario que la habría expuesto, o porque una hipótesis
+plausible se aceptó antes de comprobarla. D-02 y D-04 son código que no
+cumplía su objetivo; D-14 es una herramienta de verificación que un refactor
+posterior dejó de proteger; D-10 es una optimización que no sobrevivió una
+remedición contra su alternativa; D-16 midió un techo real pero confundido
+por dos factores nunca aislados (PDF etiquetado, página reutenida en el
+propio script de prueba); D-18 aplicó la corrección plausible —un `wire:key`
+faltante— antes de confirmar que era la causa. Ninguna de las seis se habría
+visto leyendo el diff.
+
+**Qué se aprendió sobre la herramienta.** La IA es fiable produciendo código
+que funciona y poco fiable juzgando si ese código resuelve el problema, o si
+lo mide sin sesgo. Es rápida generando verificaciones, y es capaz de generar
+una verificación que no verifica nada (D-04) o que deja de correr sin que
+nadie lo note (D-14). El criterio que hubo que aportar no fue sintáctico ni
+de arquitectura: fue insistir en que toda afirmación viniera con una medición
+reproducible, comprobar que las pruebas supieran fallar, volver a correr las
+herramientas de diagnóstico existentes antes de asumir que un cambio anterior
+las dejó intactas, remedir una optimización contra su alternativa en vez de
+confiar en una sola lectura (D-10), y —la lección más cara de esta ronda—
+preguntar al equipo antes de resolver unilateralmente un conflicto que era de
+producto, no de código (D-19).
+
+---
+
 
 *Documento sujeto a revisión y ampliación por el equipo con las fases no cubiertas aquí.*
