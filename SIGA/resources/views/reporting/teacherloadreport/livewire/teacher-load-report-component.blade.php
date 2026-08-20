@@ -35,14 +35,19 @@
 
         <div class="card-controls">
             <div class="control-group">
-                <span>{{ __('Teacher') }}:</span>
-                <select wire:model.live="teacherId">
-                    @forelse ($teacherOptions as $option)
-                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
-                    @empty
-                    <option value="">{{ __('No teachers loaded') }}</option>
-                    @endforelse
-                </select>
+                {{-- Autocomplete rather than a <select>: this list is every
+                     teacher in the institution, and RE-02 is used by picking
+                     one person out of it. --}}
+                <x-ui.autocomplete
+                    id="loadTeacherId"
+                    :label="__('Teacher')"
+                    search="teacherQuery"
+                    :options="$teacherSuggestions"
+                    :selected-label="$teacherSelectedLabel"
+                    select="selectTeacher"
+                    clear="clearTeacher"
+                    :placeholder="__('Search a teacher by name')"
+                    :empty-label="__('No teacher selected')" />
             </div>
 
             <div class="control-group">

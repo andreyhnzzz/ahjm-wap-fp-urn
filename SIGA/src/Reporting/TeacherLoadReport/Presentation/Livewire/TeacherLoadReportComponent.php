@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Src\Reporting\TeacherLoadReport\Presentation\Livewire;
 
+use App\Livewire\Concerns\InteractsWithAutocomplete;
 use App\Livewire\Concerns\InteractsWithExports;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -36,7 +37,15 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class TeacherLoadReportComponent extends Component
 {
     use AuthorizesRequests;
+    use InteractsWithAutocomplete;
     use InteractsWithExports;
+
+    /**
+     * What the user is typing into the teacher autocomplete. Not in the
+     * URL like the two filters below: a half-typed search is not a report
+     * anybody would want to share.
+     */
+    public string $teacherQuery = '';
 
     /**
      * Both filters live in the query string, so a specific teacher's
@@ -101,6 +110,22 @@ class TeacherLoadReportComponent extends Component
         );
     }
 
+    /**
+     * The autocomplete writes through here rather than binding straight to
+     * $teacherId, so the URL keeps holding a real selection and never a
+     * half-typed search.
+     */
+    public function selectTeacher(string $value): void
+    {
+        $this->teacherId = $value;
+        $this->teacherQuery = '';
+    }
+
+    public function clearTeacher(): void
+    {
+        $this->selectTeacher('');
+    }
+
     public function render(
         GenerateTeacherLoadReportUseCase $useCase,
         ListReportTeachersUseCase $teachersUseCase,
@@ -108,8 +133,12 @@ class TeacherLoadReportComponent extends Component
     ): View {
         $report = $this->currentReport($useCase, $teachersUseCase, $termsUseCase);
 
+        $teacherOptions = $this->teacherOptions($teachersUseCase);
+
         $view = view('reporting.teacherloadreport.livewire.teacher-load-report-component', [
-            'teacherOptions' => $this->teacherOptions($teachersUseCase),
+            'teacherOptions' => $teacherOptions,
+            'teacherSuggestions' => $this->filterOptions($teacherOptions, $this->teacherQuery),
+            'teacherSelectedLabel' => $this->labelFor($teacherOptions, $this->teacherId),
             'terms' => $termsUseCase->handle(),
             'headers' => $this->exportHeaders(),
             'rows' => $report === null ? [] : array_map($this->toRow(...), $report->rows()),
