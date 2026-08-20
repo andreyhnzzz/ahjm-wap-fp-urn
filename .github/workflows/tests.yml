@@ -13,6 +13,15 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
+    # The Laravel application lives in SIGA/, not at the repository root:
+    # composer.json, package.json and artisan are all one level down. The
+    # workflow file itself cannot follow them there -- GitHub only reads
+    # .github/workflows from the root -- so the run steps are pointed at
+    # SIGA instead. The `uses:` steps need no working directory.
+    defaults:
+      run:
+        working-directory: SIGA
+
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
