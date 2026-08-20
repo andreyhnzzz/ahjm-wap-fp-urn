@@ -218,22 +218,323 @@ está verificado, por correcto que se vea el código.
 
 ---
 
+## D-09 · Comparación de motores de PDF: por qué no reemplazar Chromium
+
+**Situación.** La exportación de tablas grandes (Grupos, 1500+ filas) tardaba
+~15-20 s con Spatie/Browsershot, que depende de Chromium — un proceso pesado en
+memoria. Se pidió evaluar si una librería PHP nativa (sin navegador) podía
+igualar la fidelidad visual actual con mejor rendimiento.
+
+**Qué se consultó.** Un spike reproducible (`php artisan spike:pdf-compare`)
+que renderiza el HTML **real** de producción — capturado desde el propio
+`exportPdf()` de los componentes, no una plantilla de prueba aparte — a través
+de mPDF, Dompdf y Spatie, midiendo tiempo y memoria en subprocesos aislados
+para que un fallo de un motor no arrastrara la medición de los demás.
+
+**Qué se rechazó.**
+
+- **mPDF.** Genera 238 páginas en blanco tanto con 2 filas como con 1541 —
+  un defecto real de paginación con esta plantilla (se probó remover el
+  `position: absolute` decorativo y todo `overflow: hidden`; el fallo
+  persistió). Además, 161.6 s en el caso grande: 8-9× más lento que la ruta
+  actual, no solo visualmente roto.
+- **Dompdf.** Con pocas filas el resultado es aceptable y el más rápido de
+  los tres (173 ms), pero con huecos reales: el logo AVIF no decodifica, el
+  header con `flex` se apila porque no implementa flexbox. A 1541 filas se
+  queda sin memoria a los 111 s **incluso con 1024 MB** (8× el límite por
+  defecto de PHP-FPM) y nunca termina.
+
+**Qué se aceptó.** Mantener Spatie/Browsershot. Es el único de los tres que
+reproduce la plantilla sin diferencias en ambos tamaños, y a escala real
+sigue siendo el más rápido de los que efectivamente terminan (19.3 s frente a
+161.6 s de mPDF). El diagnóstico de "Chromium es pesado" era cierto para el
+arranque en frío, pero el proyecto ya lo había resuelto antes (D-01): el
+problema real no estaba en qué motor usar.
+
+**Aprendizaje.** La pregunta "¿hay una librería más liviana?" tenía una
+respuesta medible y era no — pero solo se pudo afirmar eso después de
+reproducir el fallo de cada alternativa con datos reales, no con la tabla de
+ejemplo de cada librería.
+
+---
+
+## D-10 · De petición bloqueante a cola: desacoplar el render de la respuesta HTTP
+
+**Situación.** Aun con el motor correcto, exportar 1500+ filas seguía
+tardando ~15-20 s **dentro** de la petición HTTP — bloqueando un worker de
+PHP-FPM por ese tiempo. Bajo carga concurrente (varios usuarios exportando a
+la vez) eso agota los workers disponibles y tumba el sitio para todos, no
+solo para quien exporta.
+
+**Qué se aceptó.** Mover el renderizado a un job en cola
+(`GenerateReportExportJob`), con una tabla `report_exports` que trackea el
+estado (pendiente/procesando/listo/fallido). El componente Livewire encola y
+responde de inmediato; la UI hace polling ligero (`wire:poll`) y dispara la
+descarga automática cuando el estado pasa a "listo".
+
+**Resultado medido.**
+
+| Métrica | Antes (síncrono) | Después (cola) |
+|---|---|---|
+| Respuesta HTTP al usuario | 15-20 s (bloqueaba) | ~200-300 ms |
+| Render en segundo plano | — | Sin cambio, pero ya no bloquea nada |
+
+El tiempo de render no bajó con este cambio — bajó con D-12. Lo que cambió
+acá es **a quién le pertenece la espera**: ya no es del navegador ni del
+worker de PHP-FPM, es del job en segundo plano.
+
+**Aprendizaje.** Dos problemas que se sentían como uno solo ("la exportación
+es lenta") eran en realidad independientes: uno de arquitectura (qué bloquea
+a quién) y uno de rendimiento puro (cuánto tarda Chrome). Resolver el primero
+sin el segundo ya habría sido una mejora real — la disponibilidad del sitio
+ya no depende del tamaño del reporte que alguien esté exportando.
+
+---
+
+## D-11 · Efecto colateral no anticipado: la cola rompió la herramienta de diagnóstico
+
+**Qué pasó.** El spike de D-09 capturaba el HTML real interceptando la
+interfaz `PdfExporterInterface` que `exportPdf()` llamaba de forma directa y
+síncrona. Al migrar `exportPdf()` a la cola (D-10), esa interfaz dejó de
+invocarse en el mismo hilo — la llamada capturada por el spike nunca llegaba
+a ejecutarse, y la herramienta fallaba con un error genérico en vez de
+producir HTML.
+
+**Cómo se detectó.** Se volvió a correr el spike al retomar la optimización
+de rendimiento (D-12) y falló de inmediato, antes de medir nada.
+
+**La corrección.** El spike pasó a usar `Queue::fake()` y a capturar la
+instancia del job efectivamente encolado (`Queue::assertPushed(...)`), leyendo
+su `title`/`headers`/`rows` para renderizar la misma vista que el job real
+renderiza. Sigue sin duplicar lógica de negocio — solo cambió el punto de
+intercepción, del puerto síncrono al job asíncrono.
+
+**Aprendizaje.** Una herramienta de diagnóstico que depende de *cómo* se
+implementa una ruta (no solo de *qué* hace) queda expuesta a cualquier
+refactor de esa ruta. No se detectó por revisión de código al hacer D-10 —
+se detectó porque la siguiente sesión de trabajo la volvió a ejecutar y
+falló. Vale la pena correr las herramientas de verificación existentes antes
+de asumir que un cambio fue completo.
+
+---
+
+## D-12 · Una sola regla CSS explicaba el 89 % del tiempo de render
+
+**Situación.** Con la arquitectura de colas ya en su lugar (D-10), se pidió
+llevar el tiempo de render de 2541 filas a 11 s o menos. La medición previa
+(D-09) daba ~20 s para 1541 filas — insuficiente margen.
+
+**Qué se consultó.** Perfilado dirigido: se tomó el HTML real de producción
+(vía el job capturado, ver D-11) y se envió al sidecar de Chrome con
+variantes puntuales — sin `box-shadow`, sin `border-radius`/`overflow`, sin
+el gradiente decorativo — para aislar cuál regla CSS explicaba el costo,
+en vez de adivinar u optimizar a ciegas.
+
+**Qué se encontró.** La variante sin `box-shadow` sola bajó el tiempo de
+29.87 s a 3.40 s. El motor de impresión de Chrome rasteriza la sombra de una
+caja fragmentada en **cada página** que esa caja atraviesa — con ~200
+páginas para 2541 filas, una sola declaración CSS se pagaba doscientas veces.
+
+**Qué se aceptó.** Quitar el `box-shadow` de `.table-card`. A 8 % de opacidad
+era casi invisible impreso, y el borde de 1px ya delimita la tarjeta — el
+costo no compraba nada visualmente.
+
+**Hallazgo adicional en el camino.** El perfilado también expuso que
+`page.pdf()` de Puppeteer usa un timeout por defecto de 30 s: un reporte que
+rondaba ese límite fallaba con un 500 intermitente en vez de terminar lento.
+Se corrigió con un timeout explícito de 60 s en el sidecar, documentando por
+qué ese número (el límite de 30 s en el lado PHP igual actúa como tope
+efectivo).
+
+**Resultado medido.** Render: 29.9 s → 3.2-3.6 s (3 corridas). Extremo a
+extremo (clic → archivo listo, incluyendo el job en cola): 3.8-6.6 s. Tamaño
+del PDF: 18.7 MB → 9.4 MB, sin cambio visual verificado página por página
+(inicio, intermedio y final del documento de ~200 páginas).
+
+**Aprendizaje.** Es el mismo patrón que D-01: el instinto es optimizar lo
+que se ve grande (arquitectura, motor, cantidad de datos) cuando el costo
+real puede estar en un detalle decorativo de una sola línea. La diferencia
+con D-01 es que acá el perfilado fue dirigido por hipótesis explícitas
+(cuatro variantes CSS probadas por separado) en vez de perfilado por fases —
+ambas técnicas llegaron al mismo tipo de hallazgo por caminos distintos.
+
+---
+
 ## Balance del uso de IA
 
 **Dónde aportó valor real.** Diagnóstico de rendimiento con medición, exploración
 rápida de un código base grande, y detección de patrones (el N+1, las excepciones como
-flujo de control) que estaban repartidos en varios archivos.
+flujo de control) que estaban repartidos en varios archivos. La ronda de D-09 a D-12
+sumó otro tipo de valor: comparar alternativas reales antes de descartarlas (D-09, tres
+motores de PDF probados contra el HTML de producción, no contra un ejemplo de manual) y
+aislar una causa raíz de un solo detalle CSS entre varios candidatos plausibles (D-12)
+en vez de optimizar por instinto.
 
-**Dónde falló.** Dos veces, ambas documentadas arriba (D-02 y D-04), y las dos del
-mismo tipo: código correcto que no cumplía su objetivo. Ninguna se habría detectado
-leyendo el código; las dos se detectaron midiendo.
+**Dónde falló.** Tres veces documentadas arriba (D-02, D-04, D-11), y las tres del mismo
+tipo de fondo: una solución quedó incompleta porque nadie —ni la IA, ni una revisión de
+código— la puso a prueba contra el escenario que la habría expuesto. D-02 y D-04 son
+código que no cumplía su objetivo; D-11 es una herramienta de verificación que un
+refactor posterior dejó de proteger, y que solo se notó al volver a ejecutarla. Ninguna
+de las tres se habría visto leyendo el diff.
 
 **Qué se aprendió sobre la herramienta.** La IA es fiable produciendo código que
 funciona y poco fiable juzgando si ese código resuelve el problema. Es rápida generando
 verificaciones, y es capaz de generar una verificación que no verifica nada — como en
-D-04. El criterio que hubo que aportar no fue sintáctico ni de arquitectura: fue
-insistir en que toda afirmación viniera con una medición reproducible, y comprobar que
-las pruebas supieran fallar.
+D-04 — o que deja de correr sin que nadie lo note — como en D-11. El criterio que hubo
+que aportar no fue sintáctico ni de arquitectura: fue insistir en que toda afirmación
+viniera con una medición reproducible, comprobar que las pruebas supieran fallar, y
+volver a correr las herramientas de diagnóstico existentes antes de asumir que un
+cambio anterior las dejó intactas.
+
+---
+
+---
+
+## D-13 · 45.000 filas: cuando el problema deja de ser la velocidad
+
+**Situación.** Se pidió que la exportación a PDF aguantara 45.000 filas en 23 s o
+menos. El punto de partida medido era 2.541 filas en ~3,4 s tras D-12, así que la
+pregunta parecía de optimización.
+
+**Qué se consultó.** Dónde se va el tiempo a esa escala, separando etapas
+—consulta, construcción del HTML y render de Chromium— con un comando nuevo
+(`php artisan bench:pdf`) que mide las tres por separado.
+
+**Qué se rechazó, y por qué el diagnóstico inicial estaba mal.** La primera
+hipótesis fue optimizar CSS, y se midió antes de aplicarla: quitar el gradiente de
+puntos, el rayado `nth-child` y el borde redondeado de la tarjeta llevó 5.000 filas
+de 11,5 s a 10,6 s. Un 8 %. Se descartó como línea principal.
+
+La medición real fue otra:
+
+| filas | printToPDF | ms/fila |
+|-------|-----------|---------|
+| 1.000 | 1,47 s | 1,47 |
+| 5.000 | 6,60 s | 1,32 |
+| 15.000 | 49,55 s | 3,30 |
+| 45.000 | **falla** | — |
+
+A 45.000 Chromium no tarda: devuelve `Protocol error (Page.printToPDF): Printing
+failed`. **El objetivo no era inalcanzable por lento, era inalcanzable por
+imposible**, y ninguna cantidad de CSS lo cambiaba.
+
+**Qué se aceptó.** Partir el informe en documentos de ~1.500 filas, renderizarlos
+en paralelo contra el sidecar y unirlos con mPDF —que ya estaba instalado desde el
+spike D-09 que lo *rechazó* como renderizador, así que la unión no costó ninguna
+dependencia nueva—. Medido: 13,8-17,9 s en ocho corridas consecutivas, con un PDF
+final de 14,7 MB y 3.145 páginas.
+
+**Un error propio, detectado midiendo.** Se asumió que las fuentes embebidas en
+base64 eran el cuello, porque se re-parsean en cada trozo. Antes de extraerlas a
+archivo se contaron: 96 KB por documento. No eran el cuello. El cuello real estaba
+en el sidecar, que atendía las peticiones **en serie** —un comentario del propio
+código lo había predicho: *"swap for a small page pool if concurrent exports ever
+queue up noticeably"*—. Con un pool de páginas, 63 s pasaron a 31 s. Haber
+"arreglado" las fuentes habría costado trabajo y fidelidad visual para no ganar
+nada.
+
+**Un error introducido, y cómo se detectó.** Trocear rompió la numeración de filas:
+cada trozo es su propio render de Blade, así que `$loop->iteration` reiniciaba en 1
+cada 1.500 filas. No lo detectó ninguna prueba, sino abrir el PDF y leer las
+páginas del corte (la 108 terminaba en 1.500 y la 109 empezaba en 1). Se corrigió
+con un desplazamiento explícito y quedó fijado en `ChunkedPdfWriterTest`.
+
+**Lo que queda abierto.** En dos ocasiones, siempre en la corrida siguiente a
+reiniciar el sidecar, el total se disparó a 38 s y 58 s. En régimen estable (ocho
+corridas seguidas sin reinicio) no reaparece. Se mitigó calentando las páginas al
+arrancar y vaciando el DOM al soltarlas, pero la causa raíz no está confirmada y
+se deja anotada en lugar de darla por cerrada.
+
+**Aprendizaje.** Dos veces en la misma tarea, la respuesta plausible y la correcta
+no coincidieron: el CSS parecía el problema y valía un 8 %; las fuentes parecían el
+cuello y pesaban 96 KB. Lo que las separó no fue análisis, fue medir cada una por
+separado antes de tocarla. Y un PDF sigue sin poder validarse leyendo código: el
+bug de numeración solo existía a la vista.
+
+---
+
+## D-14 · Autocompletado: por qué el filtrado se quedó en el servidor
+
+**Situación.** Docente y aula se elegían con un `<select>` que renderizaba el
+catálogo completo. Con 65 docentes es tolerable; el proyecto ya maneja tablas de
+decenas de miles de filas y ese patrón no acompaña.
+
+**Qué se consultó.** Cómo hacer un autocompletado sin salirse del stack ni
+convertir la pantalla en una SPA.
+
+**Qué se rechazó.** Filtrar en el navegador con Alpine sobre la lista completa. Es
+lo más simple de escribir y traslada el problema: el payload sigue siendo
+proporcional al catálogo, no a lo que se muestra. También se rechazó exponer un
+endpoint de búsqueda: obligaría a re-autorizar en cada pulsación, mientras que
+filtrar una lista que el propio caso de uso y su Policy ya aprobaron no puede
+ampliar lo que el usuario ve.
+
+**Qué se aceptó.** `InteractsWithAutocomplete` filtra en PHP y devuelve como mucho
+ocho sugerencias; Alpine solo abre, cierra y mueve el resaltado. El componente
+`<x-ui.autocomplete>` es reutilizable y ya sirve a dos pantallas (grupos y carga
+docente).
+
+**Un detalle que no es cosmético.** La comparación ignora acentos y mayúsculas. Los
+datos son nombres en español: quien escribe "nunez" busca "Núñez", y no encontrarlo
+se lee como que la función está rota, no como una lección de ortografía. Está
+cubierto en `AutocompleteTest`.
+
+**Aprendizaje.** La decisión de dónde filtrar parecía de rendimiento y terminó
+siendo de autorización: el argumento más fuerte para dejarlo en el servidor no fue
+el tamaño del payload sino que la lista ya venía autorizada.
+
+---
+
+---
+
+## D-15 · Un comentario que afirmaba lo contrario de lo que hacía el código
+
+**Situación.** Al validar el autocompletado en el navegador —no leyendo el
+código, mirándolo— la tabla de grupos se vaciaba sola mientras se escribía:
+pasaba a «Mostrando 0» y no volvía hasta recargar la página.
+
+**La primera hipótesis, y por qué era falsa.** Se atribuyó a la lista de
+sugerencias: un `@forelse` sin `wire:key` por elemento, que es el error clásico
+de Livewire cuando el número de hijos cambia. Se añadieron las claves. **El bug
+siguió igual.** Añadir la corrección plausible sin comprobar que era la causa
+habría dejado el problema vivo y el diagnóstico cerrado.
+
+**Lo que reveló medir.** Desde la consola del navegador, con la tabla cargada,
+se llamó a un método que no toca nada:
+
+```js
+await w.call('pollExportStatus');   // 2541 -> 0
+await w.call('openCreateModal');    // 2541 -> 0
+```
+
+Cualquier ida y vuelta a Livewire vaciaba la tabla, incluso una anterior a
+todo este trabajo. **El autocompletado no causaba el fallo: lo hacía visible**,
+porque dispara una petición por pulsación en vez de una por clic ocasional.
+
+**La causa.** `data-table.ts` documentaba la premisa en un comentario:
+
+> *"Livewire/Alpine's DOM morph deliberately preserves this component's
+> existing reactive state across re-renders — which means a fresh
+> `x-data="crudTable(...)"` attribute in newly-rendered HTML is never re-read
+> after the first init."*
+
+En esta versión **sí se relee**. Y como el modo cliente manda las filas una vez
+y después `[]` (`isFirstRender`), cada render posterior reinicializaba el
+componente con el array vacío. El comentario no describía el comportamiento:
+describía la suposición sobre la que se escribió el código.
+
+**Qué se aceptó.** Sacar las filas del atributo volátil: van en un
+`<script type="application/json" wire:ignore>` que el morph no toca, y `x-data`
+deja de cambiar entre renders. El payload es el mismo, el evento
+`data-table-refresh` sigue igual, y afecta por igual a las cinco pantallas que
+comparten el componente. Verificado en grupos (2541 filas) y docentes (65)
+sobreviviendo a método, modal, escritura y selección.
+
+**Aprendizaje.** Un comentario que explica *por qué* algo funciona es tan
+falsable como el código, y envejece peor: nadie lo vuelve a ejecutar. Este
+llevaba tiempo siendo falso y describía el sistema al revés. Y la propia
+sesión repitió el error de D-13 en pequeño: la hipótesis plausible —las claves
+faltantes— se aplicó antes de comprobarla, y no era.
 
 ---
 
