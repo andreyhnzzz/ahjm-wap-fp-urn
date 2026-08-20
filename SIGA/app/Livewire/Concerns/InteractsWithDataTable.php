@@ -30,6 +30,12 @@ trait InteractsWithDataTable
 
     public int $perPage = 10;
 
+    /**
+     * The sizes the "Show N records" selector offers. Kept in sync by
+     * hand with the <option> list in components/ui/data-table.blade.php.
+     */
+    private const PER_PAGE_OPTIONS = [10, 25, 50];
+
     public int $page = 1;
 
     public string $sortKey = '';
@@ -81,6 +87,27 @@ trait InteractsWithDataTable
     public function isClientMode(): bool
     {
         return ! $this->isServerMode();
+    }
+
+    /**
+     * The page size to actually query with — never `$perPage` raw.
+     *
+     * In server mode this value becomes the query's LIMIT, and a Livewire
+     * public property is whatever the client's payload says it is: the
+     * <select> offering 10/25/50 is a UI affordance, not a constraint.
+     * Unclamped, a crafted request asking for every row hydrates the whole
+     * table in a single request — on the 45,000-row table that is a fatal
+     * memory error any authenticated user could trigger at will, and
+     * repeatedly.
+     *
+     * Clamped on read rather than in an `updatedPerPage()` hook on
+     * purpose: read-time cannot be bypassed by however the property came
+     * to hold its value. Same shape as the risk board bounding its own
+     * poll interval in code instead of trusting the field.
+     */
+    protected function pageSize(): int
+    {
+        return in_array($this->perPage, self::PER_PAGE_OPTIONS, true) ? $this->perPage : 10;
     }
 
     /**

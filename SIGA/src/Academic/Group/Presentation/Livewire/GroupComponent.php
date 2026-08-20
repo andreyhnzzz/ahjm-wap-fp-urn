@@ -293,9 +293,11 @@ class GroupComponent extends Component
         ListTeachersUseCase $teachersUseCase,
         ListClassroomsUseCase $classroomsUseCase,
     ): View {
+        $perPage = $this->pageSize();
+
         $result = $useCase->paginate(
             search: $this->authorizedSearch(),
-            perPage: $this->perPage,
+            perPage: $perPage,
             page: $this->page,
             sortBy: $this->sortKey,
             sortDir: $this->sortDir,
@@ -315,7 +317,7 @@ class GroupComponent extends Component
                 $result['items'],
             ),
             total: $result['total'],
-            perPage: $this->perPage,
+            perPage: $perPage,
             currentPage: $this->page,
         );
 

@@ -215,6 +215,33 @@ class AcademicModulesTest extends TestCase
         );
     }
 
+    /**
+     * `perPage` is a public Livewire property, so its value comes from the
+     * client's payload — the 10/25/50 <select> constrains the UI, not the
+     * request. Since /groups pages server-side, an unclamped value becomes
+     * the query's LIMIT: asking for every row hydrates the whole table in
+     * one request, which is a fatal memory error on a large table and a
+     * denial of service any authenticated user could repeat at will.
+     */
+    public function test_a_crafted_per_page_cannot_make_the_group_table_load_every_row(): void
+    {
+        $this->actingAs($this->superadmin());
+        Group::factory()->count(15)->create();
+
+        $groups = Livewire::test(GroupComponent::class)
+            ->set('perPage', 1_000_000)
+            ->viewData('groups');
+
+        $this->assertSame(10, $groups->perPage(), 'An out-of-range per-page reached the query; it must fall back to 10.');
+        $this->assertCount(10, $groups->items());
+
+        // The offered sizes still work — the clamp is an allowlist, not a cap.
+        $this->assertSame(
+            25,
+            Livewire::test(GroupComponent::class)->set('perPage', 25)->viewData('groups')->perPage(),
+        );
+    }
+
     private function superadmin(): User
     {
         $this->seed(PermissionSeeder::class);
