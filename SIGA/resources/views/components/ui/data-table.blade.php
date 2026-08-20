@@ -68,9 +68,9 @@ if ($lastPage <= 7) {
 
         <div class="card"
             @if ($isClient)
-            wire:key="crud-table-{{ $tableVersion ?? 0 }}"
+            wire:key="crud-table"
             x-data="crudTable({
-        rows: @js($rows),
+        seed: 'crud-table-rows',
         searchable: @js($searchable),
         search: @js($initialSearch),
         sortKey: @js($sortKey),
@@ -78,6 +78,32 @@ if ($lastPage <= 7) {
         perPage: @js($perPage),
     })"
             @endif>
+            @if ($isClient)
+            {{--
+                The rows are seeded through this tag instead of being
+                interpolated into x-data, and the difference is load-bearing.
+
+                Client mode ships its rows once and sends `[]` on every later
+                render (InteractsWithDataTable::isFirstRender). That relied on
+                the morph never re-reading x-data. Measured on this
+                Livewire/Alpine version, it does re-read it: any round trip at
+                all re-initialised the component with the empty array and the
+                table dropped to "Mostrando 0" until a full page reload —
+                reproducible with a method that touches nothing at all, e.g.
+                pollExportStatus().
+
+                wire:ignore keeps this tag out of the morph so the seed stays
+                whole, and x-data no longer changes between renders. The
+                payload is the same either way. Updates after a
+                create/update/delete still arrive through the
+                `data-table-refresh` event, unchanged.
+
+                One table per page — the same assumption data-table.ts already
+                documents for that event.
+            --}}
+            <script type="application/json" id="crud-table-rows" wire:ignore>@json($rows)</script>
+            @endif
+
             <div class="card-head">
                 <span class="card-title">{{ $title }}</span>
                 <div class="card-actions">

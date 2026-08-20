@@ -29,6 +29,13 @@ type Row = Record<string, string | number | boolean | null>;
 
 interface CrudTableConfig {
   rows?: Row[];
+  /**
+   * Id of the `<script type="application/json" wire:ignore>` tag holding
+   * the initial rows. They are seeded that way rather than inlined into
+   * x-data because the attribute is re-read on every Livewire round trip,
+   * and by then the server is sending `[]` — see data-table.blade.php.
+   */
+  seed?: string;
   searchable?: string[];
   search?: string;
   perPage?: number;
@@ -83,10 +90,32 @@ window.addEventListener("export-ready", (event) => {
   link.remove();
 });
 
+/**
+ * Reads the rows the server seeded into a wire:ignore'd JSON tag.
+ *
+ * Returns [] rather than throwing when the tag is missing or malformed: an
+ * empty table is a recoverable state (the next data-table-refresh fills it),
+ * whereas an exception here kills Alpine's init for the whole component and
+ * takes search, sorting and pagination down with it.
+ */
+function readSeededRows(seedId?: string): Row[] {
+  if (!seedId) return [];
+
+  const tag = document.getElementById(seedId);
+  if (!tag?.textContent) return [];
+
+  try {
+    const parsed = JSON.parse(tag.textContent);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 document.addEventListener("alpine:init", () => {
   Alpine.data("crudTable", (config: CrudTableConfig = {}): CrudTableComponent => ({
     // ---- state -----------------------------------------------------
-    rows: config.rows ?? [],
+    rows: config.rows ?? readSeededRows(config.seed),
     searchable: config.searchable ?? [],
     // Pre-filled when the page was opened with a `?q=` query string —
     // that's how the risk board (RE-04) can deep-link straight to the
@@ -109,13 +138,18 @@ document.addEventListener("alpine:init", () => {
       });
 
       // Unidirectional Presentation -> UI sync (Livewire -> Alpine).
-      // Livewire/Alpine's DOM morph deliberately preserves this
-      // component's existing reactive state across re-renders (so
-      // open dropdowns, in-progress typing, etc. survive unrelated
-      // updates) — which means a fresh x-data="crudTable(...)"
-      // attribute in newly-rendered HTML is never re-read after the
-      // first init. Without this, `rows` would go stale the moment
-      // any create/update/delete changes the underlying data.
+      //
+      // This used to say the morph never re-reads a fresh
+      // x-data="crudTable(...)" attribute after the first init. Measured
+      // on this version, it does re-read it — which is why the rows are
+      // now seeded through a wire:ignore'd JSON tag (readSeededRows)
+      // instead of being inlined there: the server sends `[]` on every
+      // render after the first, and that empty array was landing straight
+      // back in this component on any round trip at all.
+      //
+      // What the morph does preserve is the rest of the reactive state
+      // (open dropdowns, in-progress typing), so updates after a
+      // create/update/delete still have to be pushed in explicitly.
       //
       // The fix: after any mutation, the Livewire component calls
       // $this->dispatch('data-table-refresh', rows: [...]) with the
