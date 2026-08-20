@@ -1776,3 +1776,97 @@ select:focus[data-flux-control] {
     }
   }
 }
+
+/* ── autocompletado ──────────────────────────────────────────────
+   Picker de clave foránea con filtrado en el servidor
+   (InteractsWithAutocomplete). Alpine solo abre, cierra y mueve el
+   resaltado; los datos nunca viven en el navegador. */
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete-current {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.autocomplete-chip {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #0f2547;
+  background: #eef2fa;
+  border: 1px solid #c7d7ef;
+  border-radius: 14px;
+  padding: 2px 10px;
+}
+
+.autocomplete-chip.is-empty {
+  color: #8a92a0;
+  background: transparent;
+  border-style: dashed;
+  font-weight: 500;
+}
+
+.autocomplete-clear {
+  border: 0;
+  background: transparent;
+  color: #8a92a0;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.autocomplete-clear:hover {
+  color: #b4232a;
+}
+
+.autocomplete-list {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  max-height: 15rem;
+  overflow-y: auto;
+  list-style: none;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #d7dce6;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgb(15 37 71 / 0.10);
+}
+
+.autocomplete-list li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.autocomplete-list li.is-highlighted button,
+.autocomplete-list li button:hover {
+  background: #eef2fa;
+  color: #0f2547;
+}
+
+.autocomplete-empty {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: #8a92a0;
+}
+
+/* x-cloak: sin esto la lista parpadea abierta antes de que Alpine
+   arranque, en cada carga de la pantalla. */
+[x-cloak] {
+  display: none !important;
+}

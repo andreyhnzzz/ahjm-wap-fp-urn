@@ -246,5 +246,10 @@
   "teacher load reports": "reportes de carga docente",
   "risk board": "tablero de riesgos",
   "A system role cannot be renamed.": "Un rol del sistema no se puede renombrar.",
-  "A system role cannot be deleted.": "Un rol del sistema no se puede eliminar."
+  "A system role cannot be deleted.": "Un rol del sistema no se puede eliminar.",
+  "Type to search": "Escribe para buscar",
+  "Clear selection": "Quitar selección",
+  "No matches": "Sin coincidencias",
+  "Search a teacher by name": "Busca un docente por nombre",
+  "Search a classroom by name": "Busca un aula por nombre"
 }
