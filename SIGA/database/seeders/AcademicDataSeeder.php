@@ -6,6 +6,7 @@ use App\Models\Classroom;
 use App\Models\Group;
 use App\Models\Teacher;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Src\Academic\Group\Domain\ValueObjects\GroupStatus;
 use Src\Academic\Group\Domain\ValueObjects\Modality;
 
@@ -18,10 +19,11 @@ use Src\Academic\Group\Domain\ValueObjects\Modality;
  * the risk rules has to be visible as a changed count, not written off
  * as "different random data this time".
  *
- * Idempotent: every row is written with updateOrCreate() on its natural
- * key, so running the seeder twice leaves the same row count rather than
- * doubling it (41 scenario/filler/previous-term groups + 11959 bulk
- * volume groups, see BULK_GROUP_COUNT).
+ * Idempotent: every row is written on its natural key — updateOrCreate()
+ * in the hand-written blocks, a chunked upsert() in the volume block — so
+ * running the seeder twice leaves the same row count rather than doubling
+ * it (41 scenario/filler/previous-term groups + 19959 bulk volume groups,
+ * see BULK_GROUP_COUNT).
  *
  * The scenario block below is designed so the dataset contains at least
  * one case of every risk RE-04 defines and every alert colour RE-02 can
@@ -38,12 +40,20 @@ class AcademicDataSeeder extends Seeder
      * hand-written scenario above. Uses its own teacher pool (BULK-####
      * identity cards) so it never touches the workload totals the
      * scenario's RE-04/RE-02 comments depend on, but reuses the existing
-     * classrooms. Written with updateOrCreate() like everything else, so
-     * re-seeding stays at 12000 total rows instead of growing every run.
+     * classrooms. Written with a chunked upsert() keyed on `code` — not
+     * the per-row updateOrCreate() the hand-written blocks use — so
+     * re-seeding stays at 20000 total rows instead of growing every run.
      */
-    private const BULK_GROUP_COUNT = 11_959;
+    private const BULK_GROUP_COUNT = 19_959;
 
     private const BULK_TEACHER_COUNT = 50;
+
+    /**
+     * Rows per upsert statement. SQLite caps bound variables per
+     * statement, and each row here binds eleven columns; 500 leaves ample
+     * headroom under any of the historical caps (999 on older builds).
+     */
+    private const BULK_CHUNK_ROWS = 500;
 
     /**
      * [identity card, name, reference workload]
@@ -296,20 +306,46 @@ class AcademicDataSeeder extends Seeder
     {
         $courses = [...self::FILLER_COURSES, 'ISW-521', 'ISW-411', 'ISW-311', 'ISW-211', 'ISW-111', 'ADM-101'];
         $modalities = Modality::cases();
+        $now = now();
+        $rows = [];
 
         for ($i = 1; $i <= self::BULK_GROUP_COUNT; $i++) {
-            $this->writeGroup(
-                code: sprintf('BULK-%04d', $i),
-                courseCode: $courses[$i % count($courses)],
-                term: self::CURRENT_TERM,
-                teacher: $teachers[$i % count($teachers)],
-                classroom: $classrooms[$i % count($classrooms)],
-                enrollment: 8 + ($i % 33),
-                workload: 0.25,
-                modality: $modalities[$i % count($modalities)],
-                status: GroupStatus::Open,
-            );
+            $teacher = $teachers[$i % count($teachers)];
+
+            $rows[] = [
+                'code' => sprintf('BULK-%04d', $i),
+                'course_code' => $courses[$i % count($courses)],
+                'term' => self::CURRENT_TERM,
+                'teacher_id' => $teacher->id,
+                'classroom_id' => $classrooms[$i % count($classrooms)]->id,
+                'estimated_enrollment' => 8 + ($i % 33),
+                'assigned_workload' => 0.25,
+                'modality' => $modalities[$i % count($modalities)]->value,
+                'status' => GroupStatus::Open->value,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
         }
+
+        // Bulk upsert rather than writeGroup()'s updateOrCreate() per row.
+        // The scenario/filler blocks keep using writeGroup(): they are a few
+        // dozen rows written for readability, and the named arguments are
+        // the point there. This block is the volume filler, and at that size
+        // the per-row SELECT + INSERT and one implicit SQLite transaction
+        // per row dominate everything: 12,000 groups took 94 s that way.
+        // Same idempotency — 'code' is the unique key upsert matches on —
+        // and one wrapping transaction so SQLite commits once, not 20,000
+        // times. Chunked because SQLite caps the bound variables per
+        // statement, and the cap is per statement, not per transaction.
+        DB::transaction(function () use ($rows): void {
+            foreach (array_chunk($rows, self::BULK_CHUNK_ROWS) as $chunk) {
+                Group::query()->upsert($chunk, ['code'], [
+                    'course_code', 'term', 'teacher_id', 'classroom_id',
+                    'estimated_enrollment', 'assigned_workload', 'modality',
+                    'status', 'updated_at',
+                ]);
+            }
+        });
     }
 
     private function writeGroup(
