@@ -784,7 +784,88 @@ dependencia nueva costaría más de lo que ahorra.
 12 lógicos → 6 renders; el sidecar arranca anunciando `12 cores, concurrency 6`;
 el auto-chequeo da mediana de 110 ms contra el presupuesto de 200 ms (la misma
 cifra de D-02: el paralelismo no la movió); 45 000 filas bajan de ~30 s a ~12 s;
-139 pruebas en verde.
+149 pruebas en verde.
+
+---
+
+## D-21 · Revisar el propio trabajo terminado: lo que aparece cuando se busca
+
+**Situación.** Con la rama de rendimiento ya cerrada, la pregunta fue si quedaba
+alguna vulneración o algún punto que contradijera el enunciado. Una auditoría
+pedida en frío sobre código que uno acaba de dar por bueno.
+
+**Lo que NO apareció, que también es un resultado.** Se revisó y estaba
+correcto: la descarga de exports comprueba propiedad antes de servir el archivo
+(`user_id === Auth::id()`), los seis repositorios validan la columna de orden
+contra una lista blanca —el `$sortBy` llega desde una propiedad pública de
+Livewire, así que era el candidato obvio a inyección—, los modelos declaran
+`#[Fillable]` explícito, el JWT verifica firma con `Key` y algoritmo explícitos,
+hay rate limiting en login, 2FA, API y passkeys, la plantilla de PDF escapa todo
+con `{{ }}` y `.env` nunca estuvo en git. Enumerar lo que se descartó es parte
+del resultado: sin eso, "encontré tres cosas" no dice si se buscaron treinta.
+
+**El hallazgo real, y por qué se comprobó en vez de razonarlo.** El sidecar
+renderiza el HTML que le llegue al puerto, y `setContent()` hace que Chrome
+busque cada subrecurso de ese HTML. Se podía argumentar que sí o que no; se
+posteó un `<img src="http://127.0.0.1:8000/favicon.svg?ssrf-probe=1">` y el log
+del servidor registró el impacto. En un host de nube el destino interesante no
+es la aplicación, es el endpoint de metadatos de la instancia, y la respuesta
+vuelve dentro de un PDF que el llamante descarga.
+
+El alcance se declaró con la misma precisión: escucha en `127.0.0.1`, así que
+hace falta acceso local previo. No es explotable desde internet; es un
+amplificador para quien ya está dentro. Inflarlo habría sido tan deshonesto como
+callarlo.
+
+**El arreglo salió gratis, y eso se midió.** El propio comentario del código
+decía que las plantillas son autocontenidas, así que prohibirle al renderer todo
+lo que no sea `data:`/`about:`/`blob:` no debería costar nada. "No debería" no
+es una medición: la primera corrida después del cambio dio 27,6 s contra los
+16,6 s de antes. Antes de aceptar esa cifra se levantaron **dos sidecars a la
+vez** —uno con bloqueo en 8720, otro sin él en 8721— y se alternaron corridas
+sobre el mismo estado de máquina: 19,7 y 22,2 s con bloqueo, 20,7 y 19,3 s sin
+él. Indistinguibles. Los 27,6 s eran la dispersión de esta máquina, la misma que
+D-02 documentó. Sin ese A/B, el cambio se habría revertido por una medición
+única.
+
+**Los mensajes de validación estaban a medias.** La aplicación es en español y
+`lang/es/` solo tenía `auth.php`, así que cada formulario respondía "The Cédula
+field is required.": el nombre del campo traducido —cada Form declara sus
+`validationAttributes()`— y la frase que lo envuelve en inglés. La suite no lo
+veía porque ninguna prueba afirmaba sobre el idioma de un mensaje, solo sobre la
+presencia de un error. El archivo se generó desde la estructura del inglés,
+clave por clave, y la prueba que lo acompaña compara las dos listas: la que va a
+fallar cuando una versión de Laravel agregue una regla que nadie traduzca.
+
+**Lo que crecía sin freno.** Nada borraba un export generado: ni el archivo ni
+la fila, nunca. Había PDFs de hace una semana en disco. Se agregó `exports:prune`
+con ventana configurable y barrido de archivos huérfanos, programado a diario —
+y documentado con la advertencia que importa: **sin la línea de cron del
+scheduler no corre nada**, y un comando programado que nadie ejecuta es
+decoración, no una solución.
+
+**El patrón que se repitió.** El modo de tabla de cada pantalla era una constante
+elegida a mano: Grupos pasó a paginación por servidor solo después de morir con
+45.000 filas, y Docentes, Aulas, Permisos y Roles seguían en modo cliente porque
+todavía no las habían roto. Es exactamente la forma del problema de D-20 —una
+constante decidiendo por datos que no conoce— en otra parte del código. Ahora la
+preferencia la declara el componente y el veredicto lo da el conteo, contra un
+límite derivado de medir lo que el modo cliente cuesta: 285 bytes por fila en la
+tabla más ancha, 96 en la más angosta, 2.000 filas para no pasar de ~0,55 MB de
+payload.
+
+**Lo que se verificó del enunciado.** RE-02 exige la leyenda de jornada
+indicativa "en todas sus páginas", y el diario venía diciendo que no se había
+podido comprobar porque los datos no daban un PDF de más de una página. Se buscó
+al docente con más grupos (240), se generó su reporte —8 páginas— y se abrió en
+el navegador: la leyenda está al pie de la página 2, una página interior. El
+criterio dejó de ser una intención declarada.
+
+**Aprendizaje.** Auditar el propio trabajo recién terminado tiene un sesgo
+obvio, y la forma de contrarrestarlo no fue mirar más fuerte: fue exigir la
+misma evidencia que a cualquier otra afirmación. Cada hallazgo de esta ronda
+salió de ejecutar algo —una sonda HTTP, un A/B con dos procesos, un PDF abierto
+en la página 2— y no de leer el código con más atención.
 
 ---
 
