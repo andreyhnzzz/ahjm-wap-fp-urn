@@ -38,9 +38,33 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
+            /*
+             * These three were null, which means "leave SQLite on its
+             * own defaults", and those defaults are wrong for how this
+             * app uses the file: sessions, cache and the queue all live
+             * in it, so a single page load writes to it several times
+             * while the queue listener polls it once a second.
+             *
+             * busy_timeout: SQLite's default is 0 — a writer that finds
+             * the database locked does not wait, it fails immediately
+             * with "database is locked". Five seconds turns the most
+             * common contention (two writes overlapping by milliseconds)
+             * into a wait nobody notices.
+             *
+             * journal_mode WAL: the rollback journal blocks readers
+             * while a write is in flight; WAL lets them run at the same
+             * time, which is the whole difference between one user and
+             * several. Not for a database on a network share — WAL needs
+             * real file locking — hence the env override.
+             *
+             * synchronous NORMAL: the safe pairing with WAL. FULL fsyncs
+             * on every commit and is what makes SQLite feel slow; NORMAL
+             * can lose the last commits on a power cut, never corrupt
+             * the file.
+             */
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 5000),
+            'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
+            'synchronous' => env('DB_SYNCHRONOUS', 'NORMAL'),
             'transaction_mode' => 'DEFERRED',
         ],
 
