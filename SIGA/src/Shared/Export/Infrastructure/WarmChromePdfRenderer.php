@@ -183,17 +183,69 @@ final class WarmChromePdfRenderer
      */
     private static function spawnDetached(string $script): void
     {
+        // The sidecar is a Node process: it never reads .env, and until
+        // now it was also never told anything about the configuration
+        // that launched it. It picked its own port from its own default,
+        // so PDF_SIDECAR_PORT=9000 in .env meant PHP polling 9000 while
+        // the process it had just started listened on 8720 — the boot
+        // timeout would expire and every export would quietly fall back
+        // to Browsershot. Same story for the render pool: PHP resolves it
+        // from this host's cores, and the sidecar has to serve exactly
+        // that many or the surplus requests queue invisibly.
+        $environment = [
+            'PDF_SIDECAR_PORT' => (string) config('exports.pdf.sidecar.port'),
+            'PDF_SIDECAR_CONCURRENCY' => (string) config('host.render_concurrency'),
+        ];
+
         $command = PHP_OS_FAMILY === 'Windows'
             ? 'powershell -NoProfile -NonInteractive -Command '.escapeshellarg(
-                "Start-Process -FilePath node -ArgumentList '{$script}' -WindowStyle Hidden",
+                self::powershellEnvironment($environment)
+                ."Start-Process -FilePath node -ArgumentList '{$script}' -WindowStyle Hidden",
             )
-            : 'node '.escapeshellarg($script).' < /dev/null > /dev/null 2>&1 &';
+            : self::posixEnvironment($environment)
+                .'node '.escapeshellarg($script).' < /dev/null > /dev/null 2>&1 &';
 
         $handle = popen($command, 'r');
 
         if ($handle !== false) {
             pclose($handle);
         }
+    }
+
+    /**
+     * `$env:NAME='value'; ` per variable — Start-Process hands the
+     * current process environment to the child, so setting them on this
+     * PowerShell first is what gets them across. Values are numeric
+     * config, and the quoting keeps them literal regardless.
+     *
+     * @param  array<string, string>  $environment
+     */
+    private static function powershellEnvironment(array $environment): string
+    {
+        $assignments = '';
+
+        foreach ($environment as $name => $value) {
+            $assignments .= '$env:'.$name."='".str_replace("'", "''", $value)."'; ";
+        }
+
+        return $assignments;
+    }
+
+    /**
+     * `NAME='value' ` per variable, prefixed to the command so the child
+     * gets them without exporting anything into this shell.
+     *
+     * @param  array<string, string>  $environment
+     */
+    private static function posixEnvironment(array $environment): string
+    {
+        $assignments = '';
+
+        foreach ($environment as $name => $value) {
+            $assignments .= $name.'='.escapeshellarg($value).' ';
+        }
+
+        return $assignments;
     }
 
     /**
