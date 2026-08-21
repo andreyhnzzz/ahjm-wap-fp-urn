@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
 use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
+use Src\Shared\Export\Infrastructure\RowSpool;
 use Tests\TestCase;
 
 /**
@@ -49,7 +50,7 @@ class ReportExportJobTest extends TestCase
             $export->id,
             'Roles',
             [['label' => 'Name']],
-            [['Name' => 'Coordinator']],
+            RowSpool::write([['Name' => 'Coordinator']], $export->id),
             'pdf',
         ))->handle(
             $this->app->make(TabularPdfWriterInterface::class),
@@ -76,7 +77,7 @@ class ReportExportJobTest extends TestCase
             $export->id,
             'Roles',
             [['label' => 'Name']],
-            [['Name' => 'Coordinator']],
+            RowSpool::write([['Name' => 'Coordinator']], $export->id),
             'excel',
         );
 

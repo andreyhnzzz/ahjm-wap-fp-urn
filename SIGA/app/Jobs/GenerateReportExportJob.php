@@ -14,6 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
 use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
+use Src\Shared\Export\Infrastructure\RowSpool;
 use Throwable;
 
 /**
@@ -30,11 +31,17 @@ use Throwable;
  * exact same Chrome/OpenSpout path a synchronous one would. Only when
  * it happens changes, not what comes out.
  *
- * $headers/$rows arrive already formatted for display (label-keyed,
- * `format` callbacks already applied) — a queued job's properties are
- * serialized to the jobs table, and closures aren't serializable, so
- * InteractsWithExports resolves those before dispatch() rather than
- * this job needing to know about any entity's formatting rules.
+ * $headers arrive already formatted for display (label-keyed, `format`
+ * callbacks already applied) — a queued job's properties are serialized
+ * to the jobs table, and closures aren't serializable, so
+ * InteractsWithExports resolves those before dispatch() rather than this
+ * job needing to know about any entity's formatting rules.
+ *
+ * The rows arrive the same way but not by the same route: they come as a
+ * path to a spool file (RowSpool) rather than as an array property. They
+ * used to be the array, which put every row through the payload — 12.2 MB
+ * of JSON and a 192 MB request peak at 45,000 rows, on the click rather
+ * than in the worker. See RowSpool for the measurements.
  */
 class GenerateReportExportJob implements ShouldQueue
 {
@@ -70,13 +77,13 @@ class GenerateReportExportJob implements ShouldQueue
 
     /**
      * @param  array<int, array{label: string}>  $headers
-     * @param  array<int, array<string, scalar|null>>  $rows
+     * @param  string  $rowsPath  Absolute path of the spooled rows (RowSpool)
      */
     public function __construct(
         public readonly int $reportExportId,
         public readonly string $title,
         public readonly array $headers,
-        public readonly array $rows,
+        public readonly string $rowsPath,
         public readonly string $format,
         public readonly string $paperSize = 'letter',
     ) {
@@ -96,6 +103,8 @@ class GenerateReportExportJob implements ShouldQueue
         $relativePath = "{$directory}/{$export->id}.{$extension}";
         $absolutePath = $disk->path($relativePath);
 
+        $rows = RowSpool::read($this->rowsPath);
+
         if ($this->format === 'pdf') {
             // The writer receives the rows, not finished markup: past a few
             // thousand rows this has to become several PDFs stitched back
@@ -108,19 +117,25 @@ class GenerateReportExportJob implements ShouldQueue
             $pdfWriter->write(
                 $this->title,
                 $this->headers,
-                $this->rows,
+                $rows,
                 $absolutePath,
                 $this->paperSize,
             );
         } else {
-            $excelWriter->write($this->rows, $absolutePath);
+            $excelWriter->write($rows, $absolutePath);
         }
 
         $export->update(['status' => ReportExportStatus::Ready, 'file_path' => $relativePath]);
+
+        RowSpool::discard($this->rowsPath);
     }
 
     public function failed(?Throwable $exception): void
     {
+        // Only here, not in handle()'s finally: a job that throws on its
+        // first of two attempts must still find its rows on the second.
+        RowSpool::discard($this->rowsPath);
+
         ReportExport::query()->whereKey($this->reportExportId)->update([
             'status' => ReportExportStatus::Failed,
             'error_message' => $exception?->getMessage(),

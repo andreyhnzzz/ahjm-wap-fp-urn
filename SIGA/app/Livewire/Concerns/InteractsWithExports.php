@@ -10,6 +10,7 @@ use App\Models\ReportExport;
 use Illuminate\Support\Facades\Auth;
 use Src\Shared\Export\Contracts\ExcelExporterInterface;
 use Src\Shared\Export\Contracts\PdfExporterInterface;
+use Src\Shared\Export\Infrastructure\RowSpool;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -132,11 +133,21 @@ trait InteractsWithExports
             'disk' => 'local',
         ]);
 
+        // Streamed to a spool file rather than passed as an array: the
+        // job's arguments become the queue payload, so the array version
+        // held the rows three times over in one web request (projected,
+        // JSON-encoded, and again inside the database driver) for a
+        // measured 192 MB peak at 45,000 rows — the click dying where the
+        // worker was supposed to do the work. mapRowsForExport() is a
+        // generator and stays one all the way to disk, so what is held
+        // here now is one row.
+        $rowsPath = RowSpool::write($this->mapRowsForExport($headers, $rows), $export->id);
+
         GenerateReportExportJob::dispatch(
             $export->id,
             $title,
             array_map(static fn (array $header): array => ['label' => $header['label']], $headers),
-            iterator_to_array($this->mapRowsForExport($headers, $rows), false),
+            $rowsPath,
             $format,
             $paperSize,
         );
