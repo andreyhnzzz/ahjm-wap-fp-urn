@@ -22,6 +22,7 @@ use Spatie\LaravelPdf\Facades\Pdf;
 use Src\Academic\Group\Presentation\Livewire\GroupComponent;
 use Src\IdentityAccess\Role\Presentation\Livewire\RoleComponent;
 use Src\Shared\Export\Infrastructure\BrowsershotConfiguration;
+use Src\Shared\Export\Infrastructure\RowSpool;
 use Symfony\Component\Process\PhpExecutableFinder;
 
 /**
@@ -316,11 +317,19 @@ class PdfSpikeCompare extends Command
             throw new \RuntimeException("exportPdf on {$componentClass} never queued the export job");
         }
 
-        return view('exports.table-pdf', [
-            'title' => $job->title,
-            'headers' => $job->headers,
-            'rows' => $job->rows,
-        ])->render();
+        // The rows travel to the worker as a spool file now, not as a job
+        // property (see RowSpool), so the capture has to read them back —
+        // and then clean up after itself, because no worker will run this
+        // faked push and discard the spool the way the real job does.
+        try {
+            return view('exports.table-pdf', [
+                'title' => $job->title,
+                'headers' => $job->headers,
+                'rows' => iterator_to_array(RowSpool::read($job->rowsPath), false),
+            ])->render();
+        } finally {
+            RowSpool::discard($job->rowsPath);
+        }
     }
 
     private function actingAsSuperadmin(): void

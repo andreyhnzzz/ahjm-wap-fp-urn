@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Src\Shared\Host\Infrastructure\HostProfile;
+
 /**
  * Technical settings for how reports are rendered — deliberately not in
  * config/academic.php, which holds *business rule* parameters (risk
@@ -10,6 +12,35 @@ declare(strict_types=1);
  * changes performance or operations, never what the report says.
  */
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queued export job
+    |--------------------------------------------------------------------------
+    |
+    | timeout: seconds the worker gives GenerateReportExportJob before it
+    | kills it. There was no value here at all, which meant Laravel's
+    | default of 60 — measured against the work it has to do, a 45,000-row
+    | chunked export takes 12-14s on the reference machine and about 40s
+    | on a 4-vCPU host, and the Browsershot fallback path (sidecar down,
+    | every chunk paying ~400ms of node startup, serially) lands near 55s
+    | before either of those is scaled. A 60s ceiling therefore sat inside
+    | the working range: not a guard against a hung Chromium, a coin flip
+    | on large exports, and one that turned "slow" into "killed and run
+    | again from the top".
+    |
+    | 300s on the reference host, scaled by host.throughput_scale for a
+    | smaller one. Far outside the working range on purpose — a give-up
+    | threshold only earns its keep by being unreachable when things work.
+    |
+    | retry_after (config/queue.php) is derived from this and must stay
+    | above it: if the queue reclaims a job while its worker is still
+    | rendering, a second worker starts the same export in parallel.
+    |
+    */
+    'job' => [
+        'timeout' => (int) env('EXPORT_JOB_TIMEOUT', HostProfile::scaledSeconds(300)),
+    ],
 
     'pdf' => [
 

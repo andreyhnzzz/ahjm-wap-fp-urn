@@ -17,6 +17,7 @@
  */
 import http from 'node:http';
 import puppeteer from 'puppeteer';
+import { logicalCores, renderConcurrency } from './host-profile.mjs';
 
 const PORT = Number(process.env.PDF_SIDECAR_PORT ?? 8720);
 
@@ -70,7 +71,17 @@ const browser = await puppeteer.launch({
 // serialized queue turned 17s of real work into 63s of waiting the first
 // time this was tried. A semaphore of fresh-page slots gets the
 // parallelism back without reintroducing page reuse.
-const CONCURRENCY = Number(process.env.PDF_SIDECAR_CONCURRENCY ?? 10);
+//
+// It now really does track cores. This used to read `?? 10`, the value
+// measured on a 12-core machine, which meant ten Chromium layouts
+// fighting over four cores on a CI runner and most of a big server left
+// idle. host-profile.mjs derives it from the cores this host actually
+// has, using the same rule config/host.php applies on the PHP side so
+// the pool sending the requests and the pool serving them stay equal.
+// PDF_SIDECAR_CONCURRENCY still pins it, and PHP exports that variable
+// into this process when it autostarts it.
+const CORES = logicalCores();
+const CONCURRENCY = renderConcurrency(CORES);
 let inFlight = 0;
 const waiting = [];
 
@@ -184,5 +195,5 @@ http.createServer((req, res) => {
         }
     });
 }).listen(PORT, '127.0.0.1', () => {
-    console.log(`pdf-sidecar ready on http://127.0.0.1:${PORT} (concurrency ${CONCURRENCY})`);
+    console.log(`pdf-sidecar ready on http://127.0.0.1:${PORT} (${CORES} cores, concurrency ${CONCURRENCY})`);
 });

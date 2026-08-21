@@ -14,6 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Storage;
 use Src\Shared\Export\Contracts\ExcelFileWriterInterface;
 use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
+use Src\Shared\Export\Infrastructure\RowSpool;
 use Throwable;
 
 /**
@@ -30,11 +31,17 @@ use Throwable;
  * exact same Chrome/OpenSpout path a synchronous one would. Only when
  * it happens changes, not what comes out.
  *
- * $headers/$rows arrive already formatted for display (label-keyed,
- * `format` callbacks already applied) — a queued job's properties are
- * serialized to the jobs table, and closures aren't serializable, so
- * InteractsWithExports resolves those before dispatch() rather than
- * this job needing to know about any entity's formatting rules.
+ * $headers arrive already formatted for display (label-keyed, `format`
+ * callbacks already applied) — a queued job's properties are serialized
+ * to the jobs table, and closures aren't serializable, so
+ * InteractsWithExports resolves those before dispatch() rather than this
+ * job needing to know about any entity's formatting rules.
+ *
+ * The rows arrive the same way but not by the same route: they come as a
+ * path to a spool file (RowSpool) rather than as an array property. They
+ * used to be the array, which put every row through the payload — 12.2 MB
+ * of JSON and a 192 MB request peak at 45,000 rows, on the click rather
+ * than in the worker. See RowSpool for the measurements.
  */
 class GenerateReportExportJob implements ShouldQueue
 {
@@ -45,17 +52,43 @@ class GenerateReportExportJob implements ShouldQueue
     public int $backoff = 3;
 
     /**
+     * A timeout means the render hung, not that it was unlucky, so the
+     * retry that $tries buys is not worth a second multi-minute Chromium
+     * fleet on an already-struggling machine. Exceptions still retry;
+     * only the timeout is terminal.
+     */
+    public bool $failOnTimeout = true;
+
+    /**
+     * Seconds the worker gives this job. Captured at dispatch because
+     * that is where Laravel reads it into the queue payload.
+     *
+     * Without it the job ran under the worker's default 60s, which is
+     * inside its own working range: a 45,000-row chunked export measures
+     * 12-14s on the reference machine, ~40s on a 4-vCPU host, and ~55s
+     * through the Browsershot fallback when the sidecar is down. The
+     * export did not fail cleanly at that ceiling either — it was killed
+     * and, with $tries = 2, started again from the top.
+     *
+     * config/exports.php carries the sizing; config/queue.php's
+     * retry_after is derived from the same number and stays above it.
+     */
+    public int $timeout;
+
+    /**
      * @param  array<int, array{label: string}>  $headers
-     * @param  array<int, array<string, scalar|null>>  $rows
+     * @param  string  $rowsPath  Absolute path of the spooled rows (RowSpool)
      */
     public function __construct(
         public readonly int $reportExportId,
         public readonly string $title,
         public readonly array $headers,
-        public readonly array $rows,
+        public readonly string $rowsPath,
         public readonly string $format,
         public readonly string $paperSize = 'letter',
-    ) {}
+    ) {
+        $this->timeout = (int) config('exports.job.timeout');
+    }
 
     public function handle(TabularPdfWriterInterface $pdfWriter, ExcelFileWriterInterface $excelWriter): void
     {
@@ -70,6 +103,8 @@ class GenerateReportExportJob implements ShouldQueue
         $relativePath = "{$directory}/{$export->id}.{$extension}";
         $absolutePath = $disk->path($relativePath);
 
+        $rows = RowSpool::read($this->rowsPath);
+
         if ($this->format === 'pdf') {
             // The writer receives the rows, not finished markup: past a few
             // thousand rows this has to become several PDFs stitched back
@@ -82,19 +117,25 @@ class GenerateReportExportJob implements ShouldQueue
             $pdfWriter->write(
                 $this->title,
                 $this->headers,
-                $this->rows,
+                $rows,
                 $absolutePath,
                 $this->paperSize,
             );
         } else {
-            $excelWriter->write($this->rows, $absolutePath);
+            $excelWriter->write($rows, $absolutePath);
         }
 
         $export->update(['status' => ReportExportStatus::Ready, 'file_path' => $relativePath]);
+
+        RowSpool::discard($this->rowsPath);
     }
 
     public function failed(?Throwable $exception): void
     {
+        // Only here, not in handle()'s finally: a job that throws on its
+        // first of two attempts must still find its rows on the second.
+        RowSpool::discard($this->rowsPath);
+
         ReportExport::query()->whereKey($this->reportExportId)->update([
             'status' => ReportExportStatus::Failed,
             'error_message' => $exception?->getMessage(),

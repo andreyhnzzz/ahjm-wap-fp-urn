@@ -1,5 +1,7 @@
 <?php
 
+use Src\Shared\Host\Infrastructure\HostProfile;
+
 return [
 
     /*
@@ -40,7 +42,15 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // The starter kit's 90 was shorter than the longest job this
+            // app queues, which is how a queue produces duplicate work
+            // rather than an error: at 90 seconds the queue considers a
+            // still-running export abandoned and hands the same rows to a
+            // second worker, so two Chromium fleets render the same
+            // report over each other and the last one to finish wins.
+            // It has to stay above the job timeout, so it is derived from
+            // it — see config/exports.php for how that number was sized.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', HostProfile::scaledSeconds(300) + 60),
             'after_commit' => false,
         ],
 

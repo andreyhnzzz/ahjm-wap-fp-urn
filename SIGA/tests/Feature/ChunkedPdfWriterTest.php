@@ -52,27 +52,43 @@ class ChunkedPdfWriterTest extends TestCase
     }
 
     /**
-     * Renders go out in waves of PARALLEL_REQUESTS and each wave waits for
-     * its slowest member, so a partly-filled last wave wastes those slots.
-     * 45.000 rows at a flat 2.000 would give 23 chunks — two full waves of
-     * ten and a third of three. The size is adjusted so the chunk count is
-     * a whole multiple of the pool instead.
+     * Renders go out in waves the size of the host's render pool and each
+     * wave waits for its slowest member, so a partly-filled last wave
+     * wastes those slots. 45.000 rows at a flat 2.000 would give 23
+     * chunks — on a ten-slot pool, two full waves and a third of three.
+     * The size is adjusted so the chunk count is a whole multiple of the
+     * pool instead.
+     *
+     * The pool is no longer a constant, so the property is checked across
+     * the range of pools real hosts produce (a 4-core runner gets 2, this
+     * project's reference machine gets 10, a large server gets 16) rather
+     * than only against whichever one happens to be under the suite.
      */
     public function test_chunk_size_is_adjusted_so_waves_are_full(): void
     {
         $chunkSize = new ReflectionMethod(ChunkedChromePdfWriter::class, 'chunkSize');
-        $writer = new ChunkedChromePdfWriter(
-            $this->app->make(PdfFileWriterInterface::class));
 
-        $parallel = new \ReflectionClassConstant(ChunkedChromePdfWriter::class, 'PARALLEL_REQUESTS');
-        $pool = (int) $parallel->getValue();
+        foreach ([2, 3, 10, 16] as $pool) {
+            config()->set('host.render_concurrency', $pool);
 
-        foreach ([45000, 30000, 12345] as $rows) {
-            $size = (int) $chunkSize->invoke($writer, $rows);
-            $chunks = (int) ceil($rows / $size);
+            $writer = new ChunkedChromePdfWriter(
+                $this->app->make(PdfFileWriterInterface::class));
 
-            $this->assertSame(0, $chunks % $pool,
-                "{$rows} rows split into {$chunks} chunks, which does not fill whole waves of {$pool}");
+            $this->assertSame($pool, $writer->parallelRequests());
+
+            foreach ([45000, 30000, 12345] as $rows) {
+                $size = (int) $chunkSize->invoke($writer, $rows);
+                $chunks = (int) ceil($rows / $size);
+
+                $this->assertSame(0, $chunks % $pool,
+                    "{$rows} rows split into {$chunks} chunks, which does not fill whole waves of {$pool}");
+
+                // The rounding may only ever make chunks smaller: the
+                // 15.000-row ceiling that chunking exists to stay under is
+                // not negotiable by pool size.
+                $this->assertLessThanOrEqual(6000, $size,
+                    "A pool of {$pool} pushed the chunk size past the measured single-document ceiling.");
+            }
         }
     }
 
