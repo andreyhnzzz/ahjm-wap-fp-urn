@@ -17,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
  * with 401 on anything invalid — missing header, bad signature, expired
  * token, or a user id that no longer exists.
  *
- * ponytail: Auth::setUser() on the default guard rather than a dedicated
+ * Note: Auth::setUser() on the default guard rather than a dedicated
  * 'api' guard/driver — the only two protected resources are this file's
  * routes, so a second guard config would be ceremony with no behavior
  * difference. Add a real 'api' guard if session and token auth ever need

@@ -32,6 +32,7 @@
  * Run with the sidecar already up:  node scripts/pdf-sidecar-check.mjs
  */
 import assert from 'node:assert';
+import http from 'node:http';
 import { logicalCores, renderConcurrency } from './host-profile.mjs';
 
 const BUDGET_MS = Number(process.env.PDF_SIDECAR_CHECK_BUDGET_MS ?? 200);
@@ -65,6 +66,39 @@ for (let i = 0; i < 10; i++) {
     assert.strictEqual(bytes.subarray(0, 5).toString(), '%PDF-', `run ${i}: not a PDF`);
     assert.ok(bytes.length > 1000, `run ${i}: suspiciously small PDF (${bytes.length} bytes)`);
 }
+
+// The sidecar renders whatever HTML reaches its port, and setContent()
+// makes Chrome fetch every subresource in that HTML. Before the renderer
+// was told to refuse non-data: URLs, a posted <img src="http://..."> was
+// measured producing a real hit on the target — on a cloud host the
+// target of choice being the instance metadata endpoint, with the
+// response coming back inside the PDF.
+//
+// A listener of our own is the only honest way to assert a negative: if
+// it is never hit, nothing went out.
+let reached = false;
+const bait = http.createServer((_, res) => {
+    reached = true;
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml' }).end('<svg xmlns="http://www.w3.org/2000/svg"/>');
+});
+
+await new Promise((resolve) => bait.listen(0, '127.0.0.1', resolve));
+const baitUrl = `http://127.0.0.1:${bait.address().port}/should-never-be-fetched.svg`;
+
+const probe = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/html' },
+    body: `<!doctype html><html><body><p>probe</p><img src="${baitUrl}"></body></html>`,
+});
+const probeBytes = Buffer.from(await probe.arrayBuffer());
+
+// Give a slow fetch time to arrive before declaring it never happened.
+await new Promise((resolve) => setTimeout(resolve, 500));
+bait.close();
+
+assert.strictEqual(probeBytes.subarray(0, 5).toString(), '%PDF-', 'the SSRF probe did not even render');
+assert.ok(!reached, `the renderer fetched ${baitUrl} — remote subresources are not being blocked`);
+console.log('OK — the renderer refused a remote subresource');
 
 times.sort((a, b) => a - b);
 const median = times[Math.floor(times.length / 2)];
