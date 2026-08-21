@@ -242,7 +242,14 @@ class GroupComponent extends Component
         ListTeachersUseCase $teachersUseCase,
         ListClassroomsUseCase $classroomsUseCase,
     ): View {
-        $view = $this->isServerMode()
+        // Through tableModeFor() like every other table, even though the
+        // answer is foregone here: this screen DECLARES server mode (it
+        // is the one that earned the rule, dying at 45.000 rows), so the
+        // closure is never called and no count is issued. One code path
+        // for five screens beats an exception that has to be remembered.
+        $view = $this->tableModeFor(
+            fn (): int => $useCase->paginate(search: $this->authorizedSearch(), perPage: 1, page: 1)['total'],
+        ) === 'server'
             ? $this->renderServerMode($useCase, $teachersUseCase, $classroomsUseCase)
             : $this->renderClientMode($useCase, $teachersUseCase, $classroomsUseCase, $this->isFirstRender());
 

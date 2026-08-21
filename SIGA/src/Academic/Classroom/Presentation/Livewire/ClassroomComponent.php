@@ -136,7 +136,13 @@ class ClassroomComponent extends Component
 
     public function render(ListClassroomsUseCase $useCase): View
     {
-        $view = $this->isServerMode()
+        // The mode is resolved from the rows that exist, not declared
+        // ahead of them: see InteractsWithDataTable::tableModeFor(). The
+        // count is the paginator's own COUNT with a page of one, so
+        // deciding never costs a fetch of what it decides about.
+        $view = $this->tableModeFor(
+            fn (): int => $useCase->paginate(search: $this->authorizedSearch(), perPage: 1, page: 1)['total'],
+        ) === 'server'
             ? $this->renderServerMode($useCase)
             : $this->renderClientMode($useCase, $this->isFirstRender());
 
