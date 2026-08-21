@@ -45,6 +45,30 @@ class GenerateReportExportJob implements ShouldQueue
     public int $backoff = 3;
 
     /**
+     * A timeout means the render hung, not that it was unlucky, so the
+     * retry that $tries buys is not worth a second multi-minute Chromium
+     * fleet on an already-struggling machine. Exceptions still retry;
+     * only the timeout is terminal.
+     */
+    public bool $failOnTimeout = true;
+
+    /**
+     * Seconds the worker gives this job. Captured at dispatch because
+     * that is where Laravel reads it into the queue payload.
+     *
+     * Without it the job ran under the worker's default 60s, which is
+     * inside its own working range: a 45,000-row chunked export measures
+     * 12-14s on the reference machine, ~40s on a 4-vCPU host, and ~55s
+     * through the Browsershot fallback when the sidecar is down. The
+     * export did not fail cleanly at that ceiling either — it was killed
+     * and, with $tries = 2, started again from the top.
+     *
+     * config/exports.php carries the sizing; config/queue.php's
+     * retry_after is derived from the same number and stays above it.
+     */
+    public int $timeout;
+
+    /**
      * @param  array<int, array{label: string}>  $headers
      * @param  array<int, array<string, scalar|null>>  $rows
      */
@@ -55,7 +79,9 @@ class GenerateReportExportJob implements ShouldQueue
         public readonly array $rows,
         public readonly string $format,
         public readonly string $paperSize = 'letter',
-    ) {}
+    ) {
+        $this->timeout = (int) config('exports.job.timeout');
+    }
 
     public function handle(TabularPdfWriterInterface $pdfWriter, ExcelFileWriterInterface $excelWriter): void
     {

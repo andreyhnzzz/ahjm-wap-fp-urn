@@ -60,7 +60,7 @@
     ],
     "dev": [
       "Composer\\Config::disableProcessTimeout",
-      "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74,#86efac\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" \"npm run dev\" \"npm run pdf:sidecar\" --names='server,queue,vite,pdf'"
+      "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74,#86efac\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=360\" \"npm run dev\" \"npm run pdf:sidecar\" --names='server,queue,vite,pdf'"
     ],
     "lint": [
       "pint --parallel"
