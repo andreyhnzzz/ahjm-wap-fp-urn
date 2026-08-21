@@ -16,9 +16,26 @@
  * The number to watch is the median against 200ms. If it climbs back
  * toward that, something has genuinely regressed.
  *
+ * This budget is deliberately NOT scaled by the host's core count, even
+ * though the render pool next to it is. The ten renders below are
+ * sequential: each one occupies one core, and how many OTHER cores the
+ * machine has does not make that core faster. Scaling it by cores would
+ * be a number that looks measured and is not — a slower budget on a
+ * 4-core CI runner that would equally excuse a real regression on a
+ * 4-core developer machine. What a genuinely slower-per-core host gets
+ * instead is PDF_SIDECAR_CHECK_BUDGET_MS: a declared override, with
+ * whoever declared it on the hook for the number.
+ *
+ * The host profile is printed either way, because "the median was 260ms"
+ * is unactionable without knowing what machine produced it.
+ *
  * Run with the sidecar already up:  node scripts/pdf-sidecar-check.mjs
  */
 import assert from 'node:assert';
+import { logicalCores, renderConcurrency } from './host-profile.mjs';
+
+const BUDGET_MS = Number(process.env.PDF_SIDECAR_CHECK_BUDGET_MS ?? 200);
+const CORES = logicalCores();
 
 const ENDPOINT = `http://127.0.0.1:${process.env.PDF_SIDECAR_PORT ?? 8720}/pdf`;
 
@@ -51,7 +68,8 @@ for (let i = 0; i < 10; i++) {
 
 times.sort((a, b) => a - b);
 const median = times[Math.floor(times.length / 2)];
+console.log(`host: ${CORES} cores, render pool ${renderConcurrency(CORES)}`);
 console.log(`runs: ${times.map((t) => t.toFixed(0)).join(', ')} ms`);
-console.log(`median: ${median.toFixed(0)} ms`);
-assert.ok(median <= 200, `median ${median.toFixed(0)}ms exceeds the 200ms budget`);
-console.log('OK — warm-Chrome sidecar meets the 0.20s budget');
+console.log(`median: ${median.toFixed(0)} ms (budget ${BUDGET_MS} ms)`);
+assert.ok(median <= BUDGET_MS, `median ${median.toFixed(0)}ms exceeds the ${BUDGET_MS}ms budget`);
+console.log(`OK — warm-Chrome sidecar meets the ${(BUDGET_MS / 1000).toFixed(2)}s budget`);

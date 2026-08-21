@@ -36,7 +36,7 @@ use Src\Shared\Export\Contracts\TabularPdfWriterInterface;
  * The pieces:
  *
  *   1. chunk    rows sliced into CHUNK_ROWS documents
- *   2. render   PARALLEL_REQUESTS at a time against the warm sidecar
+ *   2. render   as many at a time as this host has cores to spare
  *   3. merge    mPDF imports every page and writes one file
  *
  * mPDF is already installed (it arrived with the D-09 engine spike that
@@ -58,32 +58,62 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
     private const CHUNK_ROWS = 6000;
 
     /**
-     * Concurrent renders. Chromium layout is CPU-bound, so this tracks
-     * cores rather than I/O.
-     *
-     * The sidecar has to be able to serve them: PDF_SIDECAR_CONCURRENCY
-     * (default 10, deliberately the same number) bounds how many fresh
-     * pages it renders at once, and anything beyond that queues inside the
-     * sidecar. Change them together, or the extra requests here just wait
-     * — silently, and only under load.
-     */
-    private const PARALLEL_REQUESTS = 10;
-
-    /**
      * Under this, one document is both faster (no merge pass) and safer
      * (no temp files) — comfortably inside the measured working range.
      */
     private const CHUNK_THRESHOLD = 12000;
 
-    /** Seconds a single chunk render may take before we give up on it. */
+    /**
+     * Seconds a single chunk render may take before we give up on it, on
+     * the reference host. Scaled by host.throughput_scale below, which is
+     * 1.0 there and larger on a smaller machine — a give-up threshold is
+     * the one budget where erring long is the safe direction: too short
+     * and a slow-but-correct render silently becomes a Browsershot
+     * fallback, which is slower still.
+     */
     private const CHUNK_TIMEOUT = 60;
 
     /** Seconds spent turning rows into markup, accumulated across chunks. */
     private float $htmlSeconds = 0.0;
 
+    /**
+     * Chunk renders in flight at once, and therefore the wave size.
+     *
+     * Read from config rather than hardcoded because the number is only
+     * correct relative to the cores underneath it: this was a constant 10
+     * measured on a 12-core machine, sitting next to an identical
+     * constant 10 in scripts/pdf-sidecar.mjs that had to be kept in step
+     * by hand. Both now come from the same host-derived value
+     * (config/host.php), so the pool sending the requests and the pool
+     * serving them cannot drift — and when they did, the symptom was
+     * only ever silent queueing inside the sidecar under load.
+     *
+     * @var positive-int
+     */
+    private readonly int $parallelRequests;
+
+    /** Seconds a chunk render may take on THIS host. */
+    private readonly int $chunkTimeout;
+
     public function __construct(
         private readonly PdfFileWriterInterface $singleDocumentWriter,
-    ) {}
+    ) {
+        $this->parallelRequests = max(1, (int) config('host.render_concurrency', 10));
+        $this->chunkTimeout = max(
+            self::CHUNK_TIMEOUT,
+            (int) ceil(self::CHUNK_TIMEOUT * (float) config('host.throughput_scale', 1.0)),
+        );
+    }
+
+    /**
+     * The wave size this instance resolved, for the callers that have to
+     * agree with it (the sidecar's own pool) and for the test that pins
+     * the chunk arithmetic against it.
+     */
+    public function parallelRequests(): int
+    {
+        return $this->parallelRequests;
+    }
 
     /**
      * @param  array<int, array{label: string}>  $headers
@@ -162,13 +192,16 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
     /**
      * Rows per chunk, adjusted so the chunks fill whole waves.
      *
-     * Renders go out PARALLEL_REQUESTS at a time and each wave waits for
+     * Renders go out $parallelRequests at a time and each wave waits for
      * its slowest member, so a wave that is only part full wastes the
      * remaining slots outright: 45.000 rows at a flat 2.000 gives 23
-     * chunks, which is two full waves of ten and a third wave of three
-     * doing the work of ten. Rounding the chunk COUNT up to a multiple of
-     * the pool turns that into three even waves of 1.500 rows, which is
-     * also further down the ms/row curve.
+     * chunks, which on a ten-slot pool is two full waves and a third
+     * wave of three doing the work of ten. Rounding the chunk COUNT up
+     * to a multiple of
+     * the pool turns that into three even waves of 1.500 rows, which
+     * is also further down the ms/row curve. The arithmetic follows the
+     * pool wherever this host puts it; only the worked example above is
+     * tied to the reference ten.
      *
      * @return positive-int array_chunk() throws on a size of 0
      */
@@ -180,8 +213,8 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
             return self::CHUNK_ROWS;
         }
 
-        $waves = (int) ceil($chunks / self::PARALLEL_REQUESTS);
-        $chunks = $waves * self::PARALLEL_REQUESTS;
+        $waves = (int) ceil($chunks / $this->parallelRequests);
+        $chunks = $waves * $this->parallelRequests;
 
         // max(1, …) is the invariant, not a cast to please the analyser:
         // array_chunk() with a size of 0 throws, and a caller passing a
@@ -214,7 +247,7 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
         // would put every chunk's HTML in flight simultaneously and
         // oversubscribe the CPU, which makes each individual render
         // slower without finishing the batch any sooner.
-        foreach (array_chunk($chunks, self::PARALLEL_REQUESTS, true) as $wave) {
+        foreach (array_chunk($chunks, $this->parallelRequests, true) as $wave) {
             $bodies = [];
 
             foreach ($wave as $index => $chunkRows) {
@@ -238,7 +271,7 @@ final class ChunkedChromePdfWriter implements TabularPdfWriterInterface
 
                 foreach ($bodies as $index => $html) {
                     $requests[] = $pool->as((string) $index)
-                        ->timeout(self::CHUNK_TIMEOUT)
+                        ->timeout($this->chunkTimeout)
                         ->withBody($html, 'text/html')
                         ->post($endpoint);
                 }
