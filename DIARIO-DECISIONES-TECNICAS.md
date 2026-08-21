@@ -679,6 +679,115 @@ mismo equipo llegan a conclusiones de producto opuestas: eso se pregunta.
 
 ---
 
+## D-20 · Dos constantes que decían "sigue a los núcleos" y no seguían a nada
+
+**Situación.** El export troceado manda varios renders a la vez contra el sidecar,
+y cuántos caben simultáneamente estaba escrito dos veces: `PARALLEL_REQUESTS = 10`
+en `ChunkedChromePdfWriter` y `PDF_SIDECAR_CONCURRENCY ?? 10` en
+`pdf-sidecar.mjs`. Los dos archivos llevaban un comentario diciendo que el número
+"sigue a los núcleos porque el maquetado de Chromium es CPU-bound". Ninguno de los
+dos leía un núcleo, y el propio comentario pedía por escrito que quien cambiara
+uno se acordara del otro.
+
+**Qué se pidió.** Que el sistema se adaptara solo a la máquina donde corre, para
+no tener que ajustarlo por dispositivo.
+
+**Qué apareció al medir.** La primera versión derivaba el pool como `núcleos − 2`,
+elegida precisamente porque **reproducía el 10 medido** en la máquina de 12 hilos:
+la idea era no cambiar el ajuste, solo expresarlo como regla. Antes de darlo por
+bueno se corrió el A/B contra la constante que reemplazaba —45 000 filas, mismo
+estado de máquina, 3–4 corridas por pool— y el resultado desmintió la premisa
+entera:
+
+| pool | 3 | 4 | 5 | **6** | **7** | 8 | 10 | 12 |
+|---|---|---|---|---|---|---|---|---|
+| total | 18,9 s | 16,2 s | 17,2 s | **12,3 s** | **12,2 s** | 31,1 s | 30,6 s | 26,5 s |
+
+El 10 que llevaba meses en producción es **2,5× más lento** que el óptimo en la
+máquina para la que se eligió. La regla "reproduce la constante" era, entonces,
+una regla para reproducir un error.
+
+**El diagnóstico, y la comparación que lo aísla.** El precipicio no está en 12
+procesadores lógicos, está en 8; esa máquina son 6 núcleos físicos con SMT. Un
+maquetado de Chromium ya es paralelo por dentro, así que el hilo hermano no aporta
+un núcleo más de trabajo. Pero el tamaño de trozo se mueve junto con el pool y
+explicaba los datos igual de bien, así que hubo que separarlos: pool 6 y pool 12
+producen **los mismos** 12 trozos de 3 750 filas → 12,3 s contra 26,5 s; pools 2, 4
+y 8 producen los mismos 8 trozos de 5 625 → 24,8 s, 16,2 s, 31,1 s. Mismo troceado,
+tres concurrencias, tres resultados. Es la concurrencia.
+
+**Qué se aceptó.** `lógicos ÷ 2`, piso 2, techo 16, derivado en PHP y en Node por
+la misma regla y con una prueba (`HostProfileParityTest`) que compara las dos
+implementaciones para nueve conteos de núcleos — están duplicadas a propósito (el
+sidecar no puede arrancar PHP para saber su propio pool) y su deriva sería
+invisible en producción: los requests sobrantes hacen cola dentro del sidecar, sin
+error, y todo export grande se vuelve más lento.
+
+El `÷ 2` se **asume** en vez de consultarse. En Windows los núcleos físicos cuestan
+una consulta WMI en un camino que un worker recorre por export, y el error está
+acotado a 2×. Las propias mediciones dicen hacia qué lado conviene equivocarse:
+quedarse corto cuesta 54 % (pool 3), pasarse cuesta 150 % (pool 8). Subestimar es
+una ralentización; sobrepasar es un precipicio.
+
+**Qué se rechazó.**
+
+- **Escalar por CPU todos los presupuestos de tiempo.** Era lo pedido, pero la
+  mitad de esos presupuestos no depende de cuántos núcleos hay. El de
+  `pdf-sidecar-check.mjs` mide diez renders **en serie**: cada uno ocupa un núcleo,
+  y tener más no hace ese núcleo más rápido. Un presupuesto que se afloja en
+  máquinas pequeñas habría excusado por igual una regresión real en un portátil de
+  cuatro núcleos. Para el caso que sí existe —un host más lento *por núcleo*, que
+  el conteo de CPU no puede ver— se dejó `PDF_SIDECAR_CHECK_BUDGET_MS`: un override
+  declarado, con responsable, en vez de una fórmula con aspecto de medición.
+- **Escalar los 30 s de RE-01.** Es el criterio del enunciado, no una medición de
+  esta máquina. Un criterio que se afloja solo en el host donde no se cumple deja
+  de ser un criterio. Lo que sí se escala son los **umbrales de rendirse**, donde
+  equivocarse por largo solo retrasa el aviso de un fallo y equivocarse por corto
+  convierte un export lento en un export fallido.
+
+**Tres fallos latentes que aparecieron de paso.**
+
+1. **El sidecar arrancado a ciegas.** Cuando PHP lo lanza él mismo no le pasaba
+   nada de su configuración. Con `PDF_SIDECAR_PORT=9000` en `.env`, PHP levantaba
+   un proceso que escuchaba en 8720 y luego lo esperaba en 9000: expiraba el
+   `boot_timeout` y **todos** los exports caían a Browsershot, más lentos, sin un
+   solo error visible. Verificado del modo en que se manifestaba: con
+   `PDF_SIDECAR_PORT=8730`, `ensureRunning()` devuelve `true`; antes, `false`.
+2. **El job de exportación sin `$timeout`.** Corría con los 60 s por defecto de
+   Laravel, que están *dentro* de su rango de trabajo (12–14 s aquí, ~40 s en 4
+   vCPU, ~55 s por la ruta de respaldo), y con `$tries = 2` el resultado no era un
+   fallo limpio sino un reinicio desde cero. Y `retry_after` de la cola estaba en
+   90 s, **por debajo** del trabajo más largo que esta app encola: la cola daba por
+   abandonado un export que seguía corriendo y se lo entregaba a un segundo worker.
+   Dos flotas de Chromium renderizando el mismo informe, sin error en ningún lado.
+3. **Las filas como argumento del job.** Los argumentos de un job encolado se
+   serializan a la tabla `jobs`, así que la petición web sostenía las entidades,
+   las filas proyectadas, el payload serializado y la copia del driver. Aislado:
+   **122 MB de pico y 16,8 MB de JSON** a 45 000 filas. `RowSpool` las escribe a
+   NDJSON según se producen y el job recibe una ruta: **12 MB**. El pico real del
+   click bajó de 192 MB a 134 MB.
+
+**Dónde se paró, y por qué.** Esos 134 MB restantes se midieron para no adivinar:
+son las **entidades** (22 MB → 134 MB al cargar 45 000 `Group`), y proyectarlas a
+filas ya no añade nada medible encima. Bajar de ahí exige que el repositorio pueda
+entregar filas de forma perezosa, que es un cambio de contrato de dominio en los
+cinco contextos acotados — una decisión del equipo, como en D-19, no un ajuste que
+se toma de paso.
+
+**Lo que se midió y se decidió NO optimizar.** La fusión con mPDF, que era
+sospechosa por ser la única etapa serial que queda: 2,4–2,5 s de 26,8 s (9 %), y su
+proporción solo baja en máquinas más pequeñas, donde el render tarda más y la
+fusión igual. Y paralelizar la suite de pruebas: corre en 6 segundos: la
+dependencia nueva costaría más de lo que ahorra.
+
+**Verificación.** `php artisan host:profile` en la máquina de referencia imprime
+12 lógicos → 6 renders; el sidecar arranca anunciando `12 cores, concurrency 6`;
+el auto-chequeo da mediana de 110 ms contra el presupuesto de 200 ms (la misma
+cifra de D-02: el paralelismo no la movió); 45 000 filas bajan de ~30 s a ~12 s;
+139 pruebas en verde.
+
+---
+
 ## Balance del uso de IA
 
 **Dónde aportó valor real.** Diagnóstico de rendimiento con medición en las dos

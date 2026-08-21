@@ -258,20 +258,120 @@ ser la respuesta honesta en cuanto existió algo que sí podía renderizarlo. El
 `.xlsx` sigue sin techo comparable, y sigue siendo la mejor opción para lo que no
 necesita maquetación de página.
 
+### El paralelismo se ajusta solo a la máquina
+
+El troceado reparte los documentos entre varios renders simultáneos, y cuántos
+caben a la vez **no es una constante del proyecto: es una propiedad del host**.
+Hasta ahora sí era una constante — un `10` en `ChunkedChromePdfWriter` y otro `10`
+en `scripts/pdf-sidecar.mjs`, copiados a mano en los dos lados.
+
+Al medir la regla derivada contra la constante que reemplazaba apareció algo que
+no se buscaba: **en la propia máquina para la que se eligió, 10 es de los peores
+valores disponibles.** 45 000 filas, mismo estado de máquina, medianas de 3–4
+corridas por pool:
+
+| pool | 3 | 4 | 5 | **6** | **7** | 8 | 10 | 12 |
+|---|---|---|---|---|---|---|---|---|
+| total | 18,9 s | 16,2 s | 17,2 s | **12,3 s** | **12,2 s** | 31,1 s | 30,6 s | 26,5 s |
+
+El mismo trabajo, 2,5× entre el mejor valor y el que estaba en producción. La
+forma de la curva es la pista: el precipicio no está en 12 procesadores lógicos,
+está en 8 — y esa máquina son **6 núcleos físicos con SMT**. Un maquetado de
+Chromium ya es paralelo por dentro; un segundo render en el hilo hermano no
+aporta un núcleo más de trabajo, estorba. Lo que sigue el pool son los núcleos
+**físicos**.
+
+La comparación que aísla la causa, porque el tamaño de trozo se mueve con el pool
+y podría explicarlo igual de bien: pool 6 y pool 12 parten las 45 000 filas en los
+mismos 12 trozos de 3 750 → 12,3 s contra 26,5 s. Los pools 2, 4 y 8 producen los
+mismos 8 trozos de 5 625 → 24,8 s, 16,2 s, 31,1 s. Es la concurrencia, no el
+troceado.
+
+La regla, entonces: **procesadores lógicos ÷ 2, piso 2, techo 16**.
+
+| Host | Lógicos | Renders simultáneos |
+|---|---|---|
+| Runner de CI | 4 | 2 |
+| Máquina de referencia | 12 | **6** |
+| Servidor grande | 32 | 16 |
+
+El piso existe porque un solo hueco vuelve a serializar el render, que es justo lo
+que el troceado evita; el techo no lo pone la CPU sino la memoria — cada render
+simultáneo es una página de Chromium con su trozo de DOM dentro. El ÷2 se asume en
+vez de consultarse: en Windows saber los núcleos físicos cuesta una consulta WMI
+en un camino que un worker recorre por export, y el error está acotado a 2×. Las
+mediciones dicen además hacia qué lado conviene equivocarse: quedarse corto cuesta
+un 54 % (pool 3), pasarse cuesta un 150 % (pool 8). Subestimar es una ralentización;
+sobrepasar es un precipicio.
+
+```bash
+php artisan host:profile        # qué detectó y qué derivó de ello
+```
+
+Se puede fijar a mano con `HOST_CORES` o `PDF_SIDECAR_CONCURRENCY` en `.env`
+(un contenedor limitado a 2 CPU por su orquestador mientras el kernel sigue
+reportando 64 es justo el caso para el que existen). PHP le pasa ese valor —y el
+puerto— al sidecar cuando lo arranca él mismo, porque Node nunca lee `.env`.
+
+**Lo que deliberadamente NO se escala por núcleos.** El presupuesto de
+`scripts/pdf-sidecar-check.mjs` (mediana ≤ 200 ms) mide diez renders *en serie*:
+cada uno ocupa un núcleo y tener más núcleos no hace ese núcleo más rápido.
+Escalarlo por CPU sería un número con aspecto de medido que no lo es, y taparía
+una regresión real en cualquier máquina de pocos núcleos. Para un host más lento
+por núcleo —que existe, y que el conteo de CPU no puede detectar— está
+`PDF_SIDECAR_CHECK_BUDGET_MS`: un override declarado, con responsable.
+
+Los 30 s de RE-01 tampoco se escalan, por la razón opuesta: son el criterio del
+enunciado, no una medición de esta máquina. Un criterio que se afloja solo en el
+host donde no se cumple deja de ser un criterio. Lo que **sí** se escala son los
+umbrales de rendirse (el timeout del job de exportación y el de cada trozo), donde
+equivocarse por largo solo retrasa el aviso de un fallo y equivocarse por corto
+convierte un export lento en un export fallido.
+
+### Cuánto tiempo puede tardar antes de que la cola lo dé por perdido
+
+`GenerateReportExportJob` no declaraba `$timeout`, así que corría con los **60 s**
+por defecto de Laravel — dentro de su propio rango de trabajo, no por encima: el
+export troceado de 45 000 filas mide 12–14 s aquí, ~40 s en un host de 4 vCPU y
+~55 s por la ruta de respaldo de Browsershot con el sidecar caído. No fallaba
+limpio en ese techo: lo mataban y, con `$tries = 2`, empezaba otra vez desde cero.
+Ahora son 300 s escalados por host, y `retry_after` de la cola (que estaba en 90,
+**por debajo** del trabajo más largo que esta app encola) se deriva de ese número y
+se mantiene por encima: si la cola reclama un job cuyo worker sigue renderizando,
+un segundo worker arranca el mismo export en paralelo y gana el último que termine.
+
 ### Memoria del click de exportar
 
 El troceado quita el techo del **render**, no el de la **petición**. `exportPdf()`
-construye todas las filas que coinciden en la misma petición web que despacha el
-job, porque el job recibe filas y no una consulta. Medido sobre los datos reales:
+construye las filas en la misma petición web que despacha el job. Medido sobre los
+datos reales, 45 000 filas:
 
-| Filas | Pico de la petición | Payload del job |
+| | Antes | Ahora |
 |---|---|---|
-| 20 000 | **116 MB** | 7,2 MB |
-| 45 000 | **192 MB** | 12,2 MB |
+| Pico de la petición | 192 MB | **134 MB** |
+| Fila en la tabla `jobs` | 12,2 MB | **una ruta** |
 
-Con el `memory_limit` de 128 MB por defecto, 20 000 filas cabe con 12 MB de
-margen —demasiado justo para confiarse— y 45 000 muere con
-`Allowed memory size exhausted`. Para exportar volúmenes así:
+Las filas viajaban como argumento del job, y los argumentos de un job encolado se
+serializan a la tabla `jobs`: la petición sostenía a la vez las entidades, las
+filas proyectadas, el payload serializado y la copia que hace el driver. Aislado,
+ese tramo medía **122 MB de pico y 16,8 MB de JSON**; ahora `RowSpool` escribe las
+filas a un archivo NDJSON según se van produciendo (`mapRowsForExport()` ya era un
+generador y sigue siéndolo) y el job recibe una ruta: **12 MB de pico** y un
+payload que es un `string`. La ruta de Excel además queda de memoria constante de
+punta a punta, porque el worker lee el spool como generador.
+
+El intercambio que trae el archivo es que puede quedar huérfano donde el payload no
+podía —un job que nunca corre deja sus filas en disco—, así que cada export barre
+los spools de más de 24 h antes de escribir el suyo. Sin scheduler: el proyecto no
+tiene ninguno corriendo, y el momento de exportar es justo cuando el barrido no
+cuesta nada al lado del trabajo que viene.
+
+Lo que queda son las **entidades**: cargar 45 000 `Group` mide 112 MB
+(22 MB → 134 MB), y proyectarlas a filas ya no añade nada medible encima. Bajar de
+ahí exige que el repositorio pueda entregar las filas de forma perezosa
+(`all(): array` → un `cursor()`), que es un cambio de contrato de dominio en los
+cinco contextos y una decisión del equipo, no un ajuste. Con el `memory_limit` de
+128 MB por defecto, 45 000 filas sigue necesitando:
 
 ```bash
 php -d memory_limit=512M artisan serve
@@ -287,7 +387,13 @@ La pantalla en sí no tiene ese problema: `/groups` pagina en el servidor
 composer run test
 ```
 
-Ejecuta Pint (estilo), PHPStan nivel 7 y PHPUnit.
+Ejecuta Pint (estilo), PHPStan nivel 7 y PHPUnit (139 pruebas).
+
+`HostProfileParityTest` compara la regla de paralelismo de PHP con la de Node para
+nueve conteos de núcleos: están duplicadas a propósito —el sidecar no puede
+arrancar PHP para saber su propio tamaño de pool— y su deriva sería invisible en
+producción (los requests sobrantes simplemente hacen cola dentro del sidecar y
+todo export grande se vuelve más lento, sin error).
 
 Las pruebas de dominio (`tests/Unit/`) extienden `PHPUnit\Framework\TestCase`, **no**
 la de Laravel: el dominio es PHP puro, así que no necesitan framework. Si alguna
