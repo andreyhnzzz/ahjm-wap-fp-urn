@@ -102,10 +102,43 @@ function releaseSlot() {
     inFlight--;
 }
 
+/**
+ * Schemes the renderer is allowed to load. Everything the templates
+ * need is already inside the document: the CSS is inlined and the only
+ * images are data: URIs (see table-pdf.blade.php, which says so).
+ *
+ * The reason to enforce it: this process renders whatever HTML arrives
+ * on its port, and setContent() makes Chrome fetch every subresource in
+ * it. Confirmed by probe before this existed — a posted
+ * <img src="http://127.0.0.1:8000/..."> produced a real hit on the
+ * application's log. On a cloud host the interesting URL is not the
+ * application, it is the instance metadata endpoint, and the response
+ * comes back inside a PDF the caller then downloads.
+ *
+ * It binds to 127.0.0.1, so reaching it already requires local access;
+ * this closes what that access is worth rather than the door itself.
+ * Costs nothing when nothing is fetched, which is the normal case.
+ */
+const ALLOWED_SCHEMES = ['data:', 'about:', 'blob:'];
+
 async function renderPdf({ html, format = 'letter', tagged = TAGGED_DEFAULT }) {
     const page = await browser.newPage();
 
     try {
+        await page.setRequestInterception(true);
+        page.on('request', (request) => {
+            if (ALLOWED_SCHEMES.some((scheme) => request.url().startsWith(scheme))) {
+                request.continue();
+                return;
+            }
+
+            // Aborted, not failed silently: a template that grows a real
+            // dependency on a remote asset should show up as a missing
+            // image in the PDF, not as a mystery.
+            console.warn(`blocked ${new URL(request.url()).protocol} request to ${request.url().slice(0, 120)}`);
+            request.abort();
+        });
+
         // Templates are fully self-contained (no network fetches, see
         // table-pdf.blade.php) so 'load' fires immediately — never wait
         // on networkidle here, it costs 500ms flat.

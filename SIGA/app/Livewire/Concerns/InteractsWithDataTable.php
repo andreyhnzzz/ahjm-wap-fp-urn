@@ -11,18 +11,28 @@ use Livewire\Attributes\Url;
  * Pagination/sorting/search state shared by every CRUD data-table
  * component, regardless of bounded context.
  *
- * Two modes, selected per-component via `$tableMode`:
+ * Two modes:
  *
- *  - 'client' (default): the full collection ships to Alpine once per
- *    render (see resources/js/data-table.ts) and search/sort/paging are
- *    resolved in the browser — zero round-trips until a mutation. For
- *    small reference catalogs: roles, permissions, statuses.
+ *  - 'client': the full collection ships to Alpine once per render (see
+ *    resources/js/data-table.ts) and search/sort/paging are resolved in
+ *    the browser — zero round-trips until a mutation. For small
+ *    reference catalogs: roles, permissions, statuses.
  *  - 'server': Livewire-driven paging, for datasets too large to ship
  *    in one response.
  *
- * A component sets `$tableMode` and branches on `isServerMode()` in
- * render() to pick `all()` vs `paginate()`. Everything else is
- * inherited.
+ * `$tableMode` is the component's PREFERENCE, not the verdict. It used
+ * to be the verdict, and that was the bug: a constant per screen decides
+ * for a dataset it has never seen. Groups only became 'server' after the
+ * screen died at 45,000 rows in production-sized data — every other
+ * screen is still one growth spurt away from the same afternoon.
+ *
+ * So a component that prefers 'client' gets it only while the data is
+ * small enough (see CLIENT_MODE_MAX_ROWS); past that it falls back to
+ * server paging on its own. A component that declares 'server' stays
+ * there regardless — that direction is never wrong.
+ *
+ * Components call tableModeFor() in render() and branch on the answer to
+ * pick `all()` vs `paginate()`. Everything else is inherited.
  */
 trait InteractsWithDataTable
 {
@@ -38,6 +48,30 @@ trait InteractsWithDataTable
     private const PER_PAGE_OPTIONS = [10, 25, 50];
 
     public int $page = 1;
+
+    /**
+     * Rows above which client mode stops paying for itself.
+     *
+     * What client mode costs is the whole collection as JSON inside the
+     * initial response's x-data attribute. Measured on this app's own
+     * rows: 285 bytes per row on the widest table (groups, nine columns)
+     * and 96 on the narrowest (teachers, three). 2,000 rows is therefore
+     * ~0.55 MB of JSON in the worst case here and ~0.18 MB in the best —
+     * a payload budget, which is the real constraint, expressed in the
+     * unit a component can actually check before paying it.
+     *
+     * Not a hard ceiling like ChunkedChromePdfWriter's chunk size:
+     * crossing it costs a round-trip per search, not a failure. Which is
+     * exactly why it must not be crossed silently.
+     */
+    private const CLIENT_MODE_MAX_ROWS = 2000;
+
+    /**
+     * What the data decided, once. Public for the same reason
+     * $bootstrapped is: Livewire's snapshot has to carry it, or every
+     * request re-runs the count that produced it.
+     */
+    public string $resolvedTableMode = '';
 
     public string $sortKey = '';
 
@@ -77,7 +111,37 @@ trait InteractsWithDataTable
      */
     public function tableMode(): string
     {
-        return $this->tableMode;
+        return $this->resolvedTableMode !== '' ? $this->resolvedTableMode : $this->tableMode;
+    }
+
+    /**
+     * Resolves the mode for the data actually present, once per component
+     * lifetime, and remembers it.
+     *
+     * $countRows is a closure and not a number because the whole point is
+     * not to pay for what we are deciding about: it runs only on the
+     * first render of a client-preferring component, and what it should
+     * do is a COUNT — the same one the paginator already issues — never a
+     * fetch of the rows being counted.
+     *
+     * @param  Closure(): int  $countRows
+     */
+    protected function tableModeFor(Closure $countRows): string
+    {
+        // A component that asked for server paging is never talked out
+        // of it: erring towards a round-trip is always survivable, and
+        // erring the other way is what this method exists to prevent.
+        if ($this->tableMode === 'server') {
+            return $this->resolvedTableMode = 'server';
+        }
+
+        if ($this->resolvedTableMode !== '') {
+            return $this->resolvedTableMode;
+        }
+
+        return $this->resolvedTableMode = $countRows() > self::CLIENT_MODE_MAX_ROWS
+            ? 'server'
+            : 'client';
     }
 
     public function isServerMode(): bool

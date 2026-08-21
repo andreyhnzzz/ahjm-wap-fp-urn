@@ -340,6 +340,39 @@ Ahora son 300 s escalados por host, y `retry_after` de la cola (que estaba en 90
 se mantiene por encima: si la cola reclama un job cuyo worker sigue renderizando,
 un segundo worker arranca el mismo export en paralelo y gana el último que termine.
 
+### La tabla decide su propio modo
+
+Cada pantalla CRUD puede servir su tabla de dos maneras: **cliente** (la
+colección entera viaja a Alpine una vez y el buscador, el orden y la paginación
+se resuelven en el navegador, sin una sola ida y vuelta) o **servidor** (Livewire
+pagina contra la base).
+
+Cuál usaba cada pantalla era una constante escrita a mano. Grupos pasó a
+servidor solo después de que la pantalla **muriera con 45.000 filas**; Docentes,
+Aulas, Permisos y Roles seguían en modo cliente porque nadie había llegado a
+romperlas todavía. Es la misma forma del problema que el pool de renders: una
+constante decidiendo por un conjunto de datos que nunca vio.
+
+Ahora `$tableMode` es la **preferencia** y no el veredicto. Una pantalla que
+prefiere cliente lo conserva mientras los datos quepan; por encima del límite
+cae sola a paginación por servidor. Una pantalla que declara servidor se queda
+ahí siempre: equivocarse hacia una ida y vuelta se sobrevive, equivocarse al
+revés es justo lo que esto evita.
+
+El límite son **2.000 filas**, y sale de medir lo que el modo cliente cuesta de
+verdad, que es la colección serializada dentro del HTML inicial:
+
+| Tabla | Bytes por fila | 2.000 filas |
+|---|---|---|
+| Grupos (9 columnas, la más ancha) | 285 B | 0,54 MB |
+| Docentes (3 columnas, la más angosta) | 96 B | 0,18 MB |
+
+Es un presupuesto de payload expresado en la unidad que un componente puede
+consultar antes de pagarlo. Decidir cuesta un `COUNT` —el mismo que el paginador
+ya emite— una sola vez por componente, y el resultado viaja en el snapshot de
+Livewire para que ningún render posterior lo vuelva a calcular
+(`DataTableModeTest` fija las dos mitades).
+
 ### Memoria del click de exportar
 
 El troceado quita el techo del **render**, no el de la **petición**. `exportPdf()`
@@ -387,7 +420,7 @@ La pantalla en sí no tiene ese problema: `/groups` pagina en el servidor
 composer run test
 ```
 
-Ejecuta Pint (estilo), PHPStan nivel 7 y PHPUnit (139 pruebas).
+Ejecuta Pint (estilo), PHPStan nivel 7 y PHPUnit (149 pruebas).
 
 `HostProfileParityTest` compara la regla de paralelismo de PHP con la de Node para
 nueve conteos de núcleos: están duplicadas a propósito —el sidecar no puede
@@ -404,7 +437,53 @@ jornada exactamente en el techo, ruido de coma flotante, acumulación por
 cuatrimestre, grupos cancelados), las tres verdictos de RE-02 (incluido el 80 %
 exacto) y los invariantes de los agregados.
 
-## 9. 🔌 Requisitos técnicos transversales
+## 9. 🚀 Puesta en producción
+
+Lo que el proyecto asume en desarrollo y deja de ser cierto en un servidor.
+
+**Hay que correr el scheduler.** Tres cosas crecen sin límite —los exports
+generados (un PDF de 12.000 filas pesa ~4 MB), las filas de `failed_jobs` y los
+spools de exports cuyo job nunca corrió— y lo que las poda son comandos
+programados. Sin esta línea de cron no se ejecuta ninguno y el crecimiento es
+exactamente el de antes:
+
+```bash
+* * * * * cd /ruta/a/SIGA && php artisan schedule:run >> /dev/null 2>&1
+```
+
+`exports:prune` corre a diario y borra lo que pasó de `EXPORT_RETENTION_DAYS`
+(30 por defecto), archivo y fila juntos, más los archivos que ya no tienen fila.
+Se puede ejecutar a mano, y `--dry-run` dice qué se llevaría sin llevárselo.
+
+**SQLite es un default de desarrollo.** Sesiones, caché y cola viven en el mismo
+archivo, así que una sola carga de página lo escribe varias veces mientras el
+listener de la cola lo consulta cada segundo. `config/database.php` ahora fija
+`busy_timeout=5000`, `journal_mode=WAL` y `synchronous=NORMAL`, que es la
+diferencia entre esperar unos milisegundos y fallar con `database is locked`.
+Aun así, para varios usuarios concurrentes lo correcto es MySQL: el bloque está
+comentado en `.env`.
+
+**`APP_DEBUG=false`.** `.env.example` viene con `true` por convención de Laravel.
+Con debug encendido, la página de error de producción muestra las variables de
+entorno, incluidas `JWT_SECRET` y las credenciales de base.
+
+**El sidecar de PDF confía en quien le hable.** Escucha en `127.0.0.1` y no pide
+autenticación: cualquier proceso local puede pedirle que renderice HTML. El
+renderer tiene prohibido salir a la red (solo `data:`, `about:` y `blob:`), lo
+que cierra el SSRF —comprobado: antes, un `<img src="http://…">` posteado
+producía un impacto real en el log de la aplicación; ahora queda en `blocked` y
+el chequeo `scripts/pdf-sidecar-check.mjs` lo verifica levantando su propio
+servidor señuelo. Aun así conviene que corra como usuario sin privilegios: usa
+`--no-sandbox`, que es lo normal en contenedores y lo que hace que el aislamiento
+del proceso importe.
+
+**Lo que falta.** No hay `Content-Security-Policy`; el resto de las cabeceras sí
+está (`X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`
+y HSTS bajo TLS). Con Alpine hace falta la build CSP o `unsafe-eval`, así que no
+es un cambio de una línea, pero `frame-ancestors`, `base-uri` y `form-action` se
+pueden añadir sin tocar nada más.
+
+## 10. 🔌 Requisitos técnicos transversales
 
 - **TypeScript.** `resources/js/data-table.ts` (la fuente de datos Alpine que
   alimenta las tablas client-side) está tipado; `tsconfig.json` en modo `strict`,

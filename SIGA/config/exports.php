@@ -38,6 +38,25 @@ return [
     | rendering, a second worker starts the same export in parallel.
     |
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Retention of generated exports
+    |--------------------------------------------------------------------------
+    |
+    | Days a finished export stays downloadable before `exports:prune`
+    | deletes the file and its row. Nothing deleted them before, so a
+    | disk filled at whatever rate people exported and academic data sat
+    | at rest indefinitely.
+    |
+    | Thirty days is longer than any reason to come back to a generated
+    | file — the report can always be generated again from live data,
+    | which is also the more correct thing to do with a stale one.
+    |
+    | The prune only runs where the scheduler runs. See the README.
+    |
+    */
+    'retention_days' => (int) env('EXPORT_RETENTION_DAYS', 30),
+
     'job' => [
         'timeout' => (int) env('EXPORT_JOB_TIMEOUT', HostProfile::scaledSeconds(300)),
     ],
